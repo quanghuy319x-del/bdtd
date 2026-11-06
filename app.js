@@ -24489,6 +24489,40 @@
     return node === container ? null : node;
   }
 
+  // v773: a brand-new note's first line lives directly inside the editor
+  // (bare text, then a <span> once typed) with no wrapping <div>, so
+  // noteCurrentLine() returned that inline <span> as "the line" and
+  // Enter / list buttons only saw the typed text, never the "1. " prefix
+  // (=> no "2." after the first numbered line). Wrap each run of loose
+  // inline nodes in a <div> first, keeping the caret where it was.
+  function noteWrapLooseLines(container = noteTextarea) {
+    const isLoose = (n) => n.nodeType === 3 || (n.nodeType === 1 && !/^(DIV|P|UL|OL|TABLE|BLOCKQUOTE|H[1-6]|BR|HR|IMG)$/.test(n.nodeName) && getComputedStyle(n).display.startsWith("inline"));
+    const kids = Array.from(container.childNodes);
+    if (!kids.some(isLoose)) return;
+    const sel = window.getSelection();
+    let saved = null;
+    if (sel.rangeCount) {
+      const r = sel.getRangeAt(0);
+      saved = { sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+    }
+    let run = null;
+    kids.forEach((n) => {
+      if (isLoose(n)) {
+        if (!run) { run = document.createElement("div"); container.insertBefore(run, n); }
+        run.appendChild(n);
+      } else run = null;
+    });
+    if (saved && container.contains(saved.sc) && container.contains(saved.ec)) {
+      try {
+        const r = document.createRange();
+        r.setStart(saved.sc, saved.so);
+        r.setEnd(saved.ec, saved.eo);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      } catch (err) { /* keep whatever selection the browser left */ }
+    }
+  }
+
   // True when the caret sits at the very start of lineDiv's text (nothing
   // typed before it on that line) — used so an inserted photo lands above
   // the line instead of below it when the cursor is at position zero.
@@ -24523,6 +24557,7 @@
   function noteToggleLinePrefix(prefixRegex, makePrefix) {
     noteTextarea.focus();
     notePushUndo();
+    noteWrapLooseLines();
     const lineDiv = noteCurrentLine();
     const el = lineDiv || noteTextarea;
     const text = el.textContent;
@@ -24644,6 +24679,7 @@
   function noteToggleOrderedList() {
     noteTextarea.focus();
     notePushUndo();
+    noteWrapLooseLines();
     const lineDiv = noteCurrentLine();
     const el = lineDiv || noteTextarea;
     const text = el.textContent;
@@ -25452,6 +25488,7 @@
   function noteHandleEnter() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
+    noteWrapLooseLines();
     const lineDiv = noteCurrentLine();
     const el = lineDiv || noteTextarea;
     const lineText = el.textContent;
