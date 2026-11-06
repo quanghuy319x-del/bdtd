@@ -96,6 +96,11 @@
 
   /* ---------------- layout engine ---------------- */
 
+  // v773: nodes hidden via "Hide node" are not drawn, so they must not
+  // reserve any layout space either (otherwise Auto-arrange leaves big
+  // invisible gaps between branches, especially in Timeline mode).
+  function kids(n) { return (n.children || []).filter(c => !c.hidden); }
+
   const TIMELINE_ROOT_GAP = 34;  // gap from root down to the first branch's row
   const TIMELINE_ROW_GAP = 20;   // gap between one branch's row and the next
 
@@ -103,8 +108,8 @@
   function measureTree(node, depth) {
     node._depth = depth;
     computeNodeBox(node);
-    if (node.collapsed || !node.children || node.children.length === 0) return;
-    for (const c of node.children) measureTree(c, depth + 1);
+    if (node.collapsed || kids(node).length === 0) return;
+    for (const c of kids(node)) measureTree(c, depth + 1);
   }
 
   // Shared bounding-box pass (including any manual drag offsets), used by
@@ -118,7 +123,7 @@
       maxX = Math.max(maxX, nx + w / 2);
       minY = Math.min(minY, ny - h / 2);
       maxY = Math.max(maxY, ny + h / 2);
-      if (!n.collapsed) (n.children || []).forEach(walk);
+      if (!n.collapsed) kids(n).forEach(walk);
     })(root);
     return { minX, maxX, minY, maxY };
   }
@@ -155,7 +160,7 @@
     (function collect(n, parent) {
       if (n !== root) nodes.push(n);
       if (parent) parentOf.set(n, parent);
-      if (!n.collapsed) (n.children || []).forEach(c => collect(c, n));
+      if (!n.collapsed) kids(n).forEach(c => collect(c, n));
     })(root, null);
 
     function isAncestor(a, b) {
@@ -179,7 +184,7 @@
     // an unrelated neighboring branch).
     function shiftSubtree(n, dy) {
       n._y += dy;
-      if (!n.collapsed) (n.children || []).forEach(c => shiftSubtree(c, dy));
+      if (!n.collapsed) kids(n).forEach(c => shiftSubtree(c, dy));
     }
 
     const PAD = 10;
@@ -211,7 +216,7 @@
   // splitSides=false, every branch fans out to the right only, stacked
   // top to bottom (the "Righty mindmap" layout).
   function layoutMindmap(root, splitSides) {
-    const children = root.children || [];
+    const children = kids(root);
     const right = [], left = [];
     if (splitSides) {
       // Each top-level branch keeps whatever side it was already assigned
@@ -248,11 +253,11 @@
     function subtreeExtent(node) {
       // v554: a collapsed node is a true layout leaf. Do not let any
       // previously measured descendant extent leak into Auto-arrange.
-      if (node.collapsed || !node.children || node.children.length === 0) {
+      if (node.collapsed || kids(node).length === 0) {
         node._subtreeH = node._h || NODE_H;
         if (node.collapsed) {
           (function clearHiddenExtent(n) {
-            (n.children || []).forEach(c => {
+            kids(n).forEach(c => {
               c._subtreeH = 0;
               clearHiddenExtent(c);
             });
@@ -261,7 +266,7 @@
         return node._subtreeH;
       }
       let total = 0;
-      node.children.forEach((c, i) => {
+      kids(node).forEach((c, i) => {
         total += subtreeExtent(c);
         if (i > 0) total += SLOT_GAP;
       });
@@ -306,24 +311,24 @@
       // rendered edge now instead of a flat distance from the root.
       const offset = parentOffset + gapFor(node);
       node._x = nodeSign * offset;
-      if (node.collapsed || !node.children || node.children.length === 0) {
+      if (node.collapsed || kids(node).length === 0) {
         node._y = y;
         return;
       }
       let total = 0;
-      node.children.forEach((c, i) => {
+      kids(node).forEach((c, i) => {
         total += c._subtreeH;
         if (i > 0) total += SLOT_GAP;
       });
       let cursor = y - total / 2;
-      node.children.forEach(c => {
+      kids(node).forEach(c => {
         const center = cursor + c._subtreeH / 2;
         place(c, depth + 1, nodeSign, center, offset + node._w);
         cursor += c._subtreeH + SLOT_GAP;
       });
       // center parent over its children
-      const first = node.children[0]._y;
-      const last = node.children[node.children.length - 1]._y;
+      const first = kids(node)[0]._y;
+      const last = kids(node)[kids(node).length - 1]._y;
       node._y = (first + last) / 2;
     }
 
@@ -370,7 +375,7 @@
   // branch has a vSide; it has no meaning at any other depth, so it's
   // left untouched everywhere else (same treatment as .side).
   function layoutTimeline(root) {
-    const children = root.children || [];
+    const children = kids(root);
     root._x = 0; root._y = 0; root._depth = 0;
     measureTree(root, 0);
 
@@ -408,7 +413,7 @@
       // v556: a collapsed top-level Timeline branch is a true leaf.
       // Its hidden direct children must not enter either side list at all;
       // otherwise their subtree heights still determine this spine row.
-      const bChildren = branch.collapsed ? [] : (branch.children || []);
+      const bChildren = branch.collapsed ? [] : kids(branch);
       const right = [], left = [];
       if (bChildren.length) {
         let rightCount = bChildren.filter(c => c.side === "right" || (!c.side && c._autoSide === "right")).length;
@@ -431,11 +436,11 @@
       function subtreeExtent(node) {
         // v554: collapsed descendants consume zero row space; only the
         // collapsed node's own visible box participates in arrangement.
-        if (node.collapsed || !node.children || node.children.length === 0) {
+        if (node.collapsed || kids(node).length === 0) {
           node._subtreeH = node._h || NODE_H;
           if (node.collapsed) {
             (function clearHiddenExtent(n) {
-              (n.children || []).forEach(c => {
+              kids(n).forEach(c => {
                 c._subtreeH = 0;
                 clearHiddenExtent(c);
               });
@@ -444,7 +449,7 @@
           return node._subtreeH;
         }
         let total = 0;
-        node.children.forEach((c, i) => {
+        kids(node).forEach((c, i) => {
           total += subtreeExtent(c);
           if (i > 0) total += SLOT_GAP;
         });
@@ -467,23 +472,23 @@
         const nodeSign = curSign;
         const offset = parentOffset + gapFor(node);
         node._x = nodeSign * offset;
-        if (node.collapsed || !node.children || node.children.length === 0) {
+        if (node.collapsed || kids(node).length === 0) {
           node._y = y;
           return;
         }
         let total = 0;
-        node.children.forEach((c, i) => {
+        kids(node).forEach((c, i) => {
           total += c._subtreeH;
           if (i > 0) total += SLOT_GAP;
         });
         let cursor = y - total / 2;
-        node.children.forEach(c => {
+        kids(node).forEach(c => {
           const center = cursor + c._subtreeH / 2;
           place(c, nodeSign, center, offset + node._w);
           cursor += c._subtreeH + SLOT_GAP;
         });
-        const first = node.children[0]._y;
-        const last = node.children[node.children.length - 1]._y;
+        const first = kids(node)[0]._y;
+        const last = kids(node)[kids(node).length - 1]._y;
         node._y = (first + last) / 2;
       }
 
@@ -550,7 +555,7 @@
       const offset = spineCursor;
       (function shift(n) {
         n._y += offset;
-        if (!n.collapsed) (n.children || []).forEach(shift);
+        if (!n.collapsed) kids(n).forEach(shift);
       })(branch);
     });
 
@@ -569,7 +574,7 @@
       const offset = spineCursorUp;
       (function shift(n) {
         n._y += offset;
-        if (!n.collapsed) (n.children || []).forEach(shift);
+        if (!n.collapsed) kids(n).forEach(shift);
       })(branch);
     }
 
