@@ -11874,3 +11874,33 @@ kbd{
 
 /* v762: Never expose a cached sidebar while waiting for cloud verification. */
 body.signed-out #mindmap-list{display:none!important}
+
+/* Node checkbox (right-click menu -> Add checkbox) */
+.node-checkbox{
+  position:absolute;
+  left: 11px; top: 50%;
+  transform: translateY(-50%);
+  width: 15px; height: 15px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+  opacity: .85;
+}
+.node-checkbox:hover{ opacity: 1; box-shadow: 0 0 0 3px rgba(128,128,128,.25); }
+.node-checkbox.checked{ background: currentColor; }
+.node-checkbox.checked::after{
+  content: "";
+  position: absolute;
+  left: 4px; top: 0.5px;
+  width: 4px; height: 8px;
+  border: solid var(--panel, #fff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.node.node-checked{
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: currentColor;
+}

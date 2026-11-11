@@ -783,12 +783,16 @@
     return { tableW, tableH, colWidths, rowHeights };
   }
 
+  const CHECKBOX_W = 22;
   function computeNodeBox(node) {
     const depth = node._depth || 0;
-    const padX = depth === 0 ? 56 : 32;
+    // A node checkbox (right-click menu -> "Add checkbox") sits inside the
+    // left edge of the box, so reserve CHECKBOX_W extra px of horizontal room.
+    const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
+    const padX = (depth === 0 ? 56 : 32) + cbExtra;
     const vPad = depth === 0 ? 28 : 16;
     const baseH = depth === 0 ? ROOT_H : NODE_H;
-    const minW = depth === 0 ? 130 : 56;
+    const minW = (depth === 0 ? 130 : 56) + cbExtra;
 
     let w, h, lines;
     if (nodeIsTable(node)) {
@@ -14845,7 +14849,7 @@
     // existed — treat that the same as "soft" instead of producing a
     // dead "glow-true" class that matches no CSS rule.
     const glowVariant = node.glow === true ? "soft" : node.glow;
-    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (glowVariant ? ` glow-${glowVariant}` : "");
+    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "");
     div.dataset.id = node.id;
     div.style.left = (ox + nodeLeftX(node)) + "px";
     div.style.top = (oy + node._y + (node.oy || 0) - h / 2) + "px";
@@ -14939,6 +14943,31 @@
         handleNodePhotoFiles(node.id, [file]);
       });
     }
+    }
+
+    // Optional checkbox (right-click menu -> "Add checkbox"). Drawn purely in
+    // CSS (no text content) so it never leaks into the node's editable text.
+    // Hidden while editing; the reserved left padding stays so text doesn't jump.
+    if (node.checkbox && !nodeIsTable(node)) {
+      div.style.paddingLeft = (16 + CHECKBOX_W) + "px";
+      if (node.id !== state.editingId) {
+        const cb = document.createElement("span");
+        cb.className = "node-checkbox" + (node.checked ? " checked" : "");
+        cb.setAttribute("role", "checkbox");
+        cb.setAttribute("aria-checked", node.checked ? "true" : "false");
+        cb.title = node.checked ? "Uncheck" : "Check";
+        cb.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+        cb.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+        cb.addEventListener("dblclick", (e) => { e.stopPropagation(); });
+        cb.addEventListener("click", (e) => {
+          e.stopPropagation();
+          pushUndo();
+          node.checked = !node.checked;
+          renderAll();
+          persist();
+        });
+        div.appendChild(cb);
+      }
     }
 
     // The root node doubles as a small live clock — current time,
@@ -16881,6 +16910,14 @@
       structureItems.push(["📥 Move to here", () => completeMoveTo(node.id)]);
     }
     structureItems.push([node.struck ? "~~ Remove strikethrough" : "~~ Strikethrough", () => { pushUndo(); node.struck = !node.struck; renderAll(); persist(); }]);
+    if (!nodeIsTable(node)) {
+      if (node.checkbox) {
+        structureItems.push([node.checked ? "☐ Uncheck" : "☑ Check", () => { pushUndo(); node.checked = !node.checked; renderAll(); persist(); }]);
+        structureItems.push(["🗑️ Remove checkbox", () => { pushUndo(); node.checkbox = false; node.checked = false; renderAll(); persist(); }]);
+      } else {
+        structureItems.push(["☐ Add checkbox", () => { pushUndo(); node.checkbox = true; node.checked = false; renderAll(); persist(); }]);
+      }
+    }
 
     // v592: Hide keeps the node and its whole branch in the map data but
     // removes it from the canvas. Restore hidden direct children from their
@@ -17602,7 +17639,7 @@
         : ((n.text || "(untitled)").trim() || "(untitled)");
       const indent = "  ".repeat(depth);
       const marker = depth ? "- " : "";
-      lines.push(indent + marker + label);
+      lines.push(indent + marker + (n.checkbox && !nodeIsTable(n) ? (n.checked ? "[x] " : "[ ] ") : "") + label);
       (n.children || []).filter(Boolean).forEach(c => walk(c, depth + 1));
     })(node, 0);
     return lines.join("\n");
