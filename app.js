@@ -223,7 +223,7 @@
   function layout(root) {
     resetLayoutCaches();
     const mode = (state.current && state.current.layout) || "mindmap";
-    LAYOUT_TIGHT = mode !== "timeline";
+    LAYOUT_TIGHT = true; // v801: all layouts use tight columns
     if (mode === "logic" || mode === "righty") layoutMindmap(root, false);
     else if (mode === "timeline") layoutTimeline(root);
     else layoutMindmap(root, true);
@@ -562,8 +562,8 @@
         }
         // v797: node sits at `y`; children use their packed offsets.
         node._y = y;
-        // Level columns — see the Mindmap layout's place().
-        const colW = Math.max(node._w || 0, sibW || 0);
+        // v801: tight columns — children start right after THIS node's box.
+        const colW = node._w || 0;
         const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
         kids(node).forEach(c => {
           place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
@@ -579,7 +579,7 @@
         if (list.length === 0) return 0;
         list.forEach(n => subtreeExtent(n));
         // v797: contour-pack this branch's children around the branch's own y = 0.
-        packSiblings(list, slotGapOf(branch));
+        packSiblings(list, slotGapOf(branch), c => branch._w / 2 + gapFor(c));
         const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
         list.forEach(n => {
           // The branch sits centered on the spine (branch._x === 0), so its outer
