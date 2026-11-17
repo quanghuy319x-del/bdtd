@@ -109,41 +109,69 @@
   // centre. Siblings are stacked as tightly as those outlines allow, so a tall node
   // deep in one branch no longer pushes its siblings apart at shallower depths.
   // Results live in Maps (not on the nodes) so nothing extra is saved to disk.
-  let LAYOUT_PROF = new Map(); // node -> [{top,bot}] per relative depth
+  let LAYOUT_PROF = new Map(); // node -> [{top,bot,x0,x1}] per relative depth
   let LAYOUT_RY = new Map();   // node -> y offset relative to its parent's centre
+  // v800: "tight" columns (Mindmap / Righty layouts). A node's children start right
+  // after THAT node's own box instead of after the widest node in its sibling group.
+  // Because columns no longer line up, every outline entry also carries the
+  // horizontal span it covers (x0..x1, measured outward from the subtree root's
+  // anchor edge) so packSiblings can keep a wide node from running into a
+  // neighbour's children. Timeline keeps the old aligned columns (flag off).
+  let LAYOUT_TIGHT = false;
+  const TIGHT_PAD_X = 8; // horizontal clearance required between boxes
   function profileOf(node) {
     const h = node._h || NODE_H;
-    const self = { top: -h / 2, bot: h / 2 };
+    const w = node._w || 0;
+    const self = { top: -h / 2, bot: h / 2, x0: 0, x1: w };
     const list = node.collapsed ? [] : kids(node);
     let prof;
     if (!list.length) prof = [self];
-    else prof = [self].concat(packSiblings(list, slotGapOf(node)));
+    else prof = [self].concat(packSiblings(list, slotGapOf(node), c => w + gapFor(c)));
     LAYOUT_PROF.set(node, prof);
     return prof;
   }
   // Sets LAYOUT_RY for each sibling (centred so first/last midpoint = 0, i.e. the
   // parent's own y) and returns the group's merged outline in that same frame.
-  function packSiblings(list, gap) {
+  // dxOf(child) = horizontal distance from the parent's anchor to the child's anchor
+  // (only used by the tight layout, to compare boxes at different depths).
+  function packSiblings(list, gap, dxOf) {
     const acc = [];
     const ys = [];
     list.forEach((c, i) => {
-      const p = profileOf(c);
+      const p0 = profileOf(c);
+      const dx = (LAYOUT_TIGHT && dxOf) ? dxOf(c) : 0;
+      const p = p0.map(e => ({ top: e.top, bot: e.bot, x0: e.x0 + dx, x1: e.x1 + dx }));
       let y = 0;
       if (i > 0) {
         y = -Infinity;
         const n = Math.min(p.length, acc.length);
         for (let d = 0; d < n; d++) y = Math.max(y, acc[d].bot + gap - p[d].top);
+        if (LAYOUT_TIGHT) {
+          // Boxes at DIFFERENT depths can now share the same horizontal range
+          // (e.g. a wide sibling vs. its neighbour's children): keep those apart too.
+          for (let d = 0; d < acc.length; d++) {
+            for (let e = 0; e < p.length; e++) {
+              if (d === e) continue;
+              if (acc[d].x0 < p[e].x1 + TIGHT_PAD_X && p[e].x0 < acc[d].x1 + TIGHT_PAD_X) {
+                y = Math.max(y, acc[d].bot + gap - p[e].top);
+              }
+            }
+          }
+        }
       }
       ys.push(y);
       p.forEach((e, d) => {
         const t = y + e.top, b = y + e.bot;
-        if (!acc[d]) acc[d] = { top: t, bot: b };
-        else { acc[d].top = Math.min(acc[d].top, t); acc[d].bot = Math.max(acc[d].bot, b); }
+        if (!acc[d]) acc[d] = { top: t, bot: b, x0: e.x0, x1: e.x1 };
+        else {
+          acc[d].top = Math.min(acc[d].top, t); acc[d].bot = Math.max(acc[d].bot, b);
+          acc[d].x0 = Math.min(acc[d].x0, e.x0); acc[d].x1 = Math.max(acc[d].x1, e.x1);
+        }
       });
     });
     const mid = (ys[0] + ys[ys.length - 1]) / 2;
     list.forEach((c, i) => LAYOUT_RY.set(c, ys[i] - mid));
-    return acc.map(e => ({ top: e.top - mid, bot: e.bot - mid }));
+    return acc.map(e => ({ top: e.top - mid, bot: e.bot - mid, x0: e.x0, x1: e.x1 }));
   }
   function resetLayoutCaches() { LAYOUT_PROF = new Map(); LAYOUT_RY = new Map(); }
 
@@ -195,6 +223,7 @@
   function layout(root) {
     resetLayoutCaches();
     const mode = (state.current && state.current.layout) || "mindmap";
+    LAYOUT_TIGHT = mode !== "timeline";
     if (mode === "logic" || mode === "righty") layoutMindmap(root, false);
     else if (mode === "timeline") layoutTimeline(root);
     else layoutMindmap(root, true);
@@ -385,7 +414,9 @@
       // Level columns: this node's children start past the widest node in
       // THIS node's own sibling group (not just past this node), so a narrow
       // node's children can never start underneath a wider sibling's box.
-      const colW = Math.max(node._w || 0, sibW || 0);
+      // v800: children start right after THIS node's own box (tight columns),
+      // not after the widest sibling; packSiblings keeps neighbours from colliding.
+      const colW = node._w || 0;
       const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
       kids(node).forEach(c => {
         place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
@@ -397,7 +428,7 @@
       list.forEach(n => measureTree(n, 1));
       list.forEach(n => subtreeExtent(n));
       // v797: contour-pack the top-level branches (centred on the root's y = 0).
-      packSiblings(list, slotGapOf(root));
+      packSiblings(list, slotGapOf(root), c => root._w / 2 + gapFor(c));
       const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
       list.forEach(n => {
         // The root is centered on the spine, so its outer edge toward this fan
