@@ -101,8 +101,8 @@
   // invisible gaps between branches, especially in Timeline mode).
   function kids(n) { return (n.children || []).filter(c => !c.hidden); }
 
-  const TIMELINE_ROOT_GAP = 34;  // gap from root down to the first branch's row
-  const TIMELINE_ROW_GAP = 20;   // gap between one branch's row and the next
+  const TIMELINE_ROOT_GAP = 20;  // gap from root down to the first branch's row
+  const TIMELINE_ROW_GAP = 10;   // gap between one branch's row and the next
 
   // Shared depth/size measuring pass, used by every layout mode.
   function measureTree(node, depth) {
@@ -187,7 +187,7 @@
       if (!n.collapsed) kids(n).forEach(c => shiftSubtree(c, dy));
     }
 
-    const PAD = 10;
+    const PAD = 4; // v791: was 10; must stay <= SLOT_GAP or overlap-resolution re-widens the gaps
     const MAX_PASSES = 8;
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       let moved = false;
@@ -1049,7 +1049,7 @@
   // wider than the gap between later generations, so first-level branches
   // sit further out from the center.
   const ROOT_X_GAP = X_GAP * 2;
-  const SLOT_GAP = 14;
+  const SLOT_GAP = 6; // v791: was 14 (tighter vertical spacing between siblings/children)
   const DB_NAME = "branchline_db";
   const DB_VERSION = 4;
   const STORE = "mindmaps";
