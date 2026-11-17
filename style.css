@@ -11921,3 +11921,7 @@ body.signed-out #mindmap-list{display:none!important}
 @media (prefers-reduced-motion:reduce){
   .calendar-grid-ghost{display:none!important}
 }
+
+/* v792: H + V gap inputs share one row */
+.ctx-distance-row .ctx-distance-input{ width:58px; }
+.ctx-distance-row .ctx-distance-input-v{ margin-left:8px; }

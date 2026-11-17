@@ -101,6 +101,13 @@
   // invisible gaps between branches, especially in Timeline mode).
   function kids(n) { return (n.children || []).filter(c => !c.hidden); }
 
+  // v792: vertical gap between a node's children. A node may carry its own
+  // `vGap` (set from the right-click menu, cascaded to all lower levels);
+  // otherwise the global SLOT_GAP default applies.
+  function slotGapOf(parent) {
+    return (parent && typeof parent.vGap === "number" && parent.vGap >= 0) ? parent.vGap : SLOT_GAP;
+  }
+
   const TIMELINE_ROOT_GAP = 20;  // gap from root down to the first branch's row
   const TIMELINE_ROW_GAP = 10;   // gap between one branch's row and the next
 
@@ -268,7 +275,7 @@
       let total = 0;
       kids(node).forEach((c, i) => {
         total += subtreeExtent(c);
-        if (i > 0) total += SLOT_GAP;
+        if (i > 0) total += slotGapOf(node);
       });
       return (node._subtreeH = Math.max(node._h || NODE_H, total));
     }
@@ -318,13 +325,13 @@
       let total = 0;
       kids(node).forEach((c, i) => {
         total += c._subtreeH;
-        if (i > 0) total += SLOT_GAP;
+        if (i > 0) total += slotGapOf(node);
       });
       let cursor = y - total / 2;
       kids(node).forEach(c => {
         const center = cursor + c._subtreeH / 2;
         place(c, depth + 1, nodeSign, center, offset + node._w);
-        cursor += c._subtreeH + SLOT_GAP;
+        cursor += c._subtreeH + slotGapOf(node);
       });
       // center parent over its children
       const first = kids(node)[0]._y;
@@ -339,7 +346,7 @@
       let total = 0;
       list.forEach((n, i) => {
         total += n._subtreeH;
-        if (i > 0) total += SLOT_GAP;
+        if (i > 0) total += slotGapOf(root);
       });
       let cursor = -total / 2;
       list.forEach(n => {
@@ -349,7 +356,7 @@
         // its own width, not 0 — otherwise a wide root would suffer the
         // same too-close-to-its-child overlap that wide non-root nodes do.
         place(n, 1, sign, center, root._w / 2);
-        cursor += n._subtreeH + SLOT_GAP;
+        cursor += n._subtreeH + slotGapOf(root);
       });
     }
 
@@ -451,7 +458,7 @@
         let total = 0;
         kids(node).forEach((c, i) => {
           total += subtreeExtent(c);
-          if (i > 0) total += SLOT_GAP;
+          if (i > 0) total += slotGapOf(node);
         });
         return (node._subtreeH = Math.max(node._h || NODE_H, total));
       }
@@ -479,13 +486,13 @@
         let total = 0;
         kids(node).forEach((c, i) => {
           total += c._subtreeH;
-          if (i > 0) total += SLOT_GAP;
+          if (i > 0) total += slotGapOf(node);
         });
         let cursor = y - total / 2;
         kids(node).forEach(c => {
           const center = cursor + c._subtreeH / 2;
           place(c, nodeSign, center, offset + node._w);
-          cursor += c._subtreeH + SLOT_GAP;
+          cursor += c._subtreeH + slotGapOf(node);
         });
         const first = kids(node)[0]._y;
         const last = kids(node)[kids(node).length - 1]._y;
@@ -503,7 +510,7 @@
         let total = 0;
         list.forEach((n, i) => {
           total += n._subtreeH;
-          if (i > 0) total += SLOT_GAP;
+          if (i > 0) total += slotGapOf(branch);
         });
         let cursor = -total / 2;
         list.forEach(n => {
@@ -512,7 +519,7 @@
           // same treatment as the root), so its outer edge toward this fan
           // direction is half its own width, not 0.
           place(n, sign, center, branch._w / 2);
-          cursor += n._subtreeH + SLOT_GAP;
+          cursor += n._subtreeH + slotGapOf(branch);
         });
         return total;
       }
@@ -16253,6 +16260,7 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    if (typeof parent.vGap === "number" && parent.vGap >= 0) n.vGap = parent.vGap;
     if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
       n.xGap = parent.childrenGap;
       n.childrenGap = parent.childrenGap;
@@ -16275,6 +16283,7 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    if (typeof parent.vGap === "number" && parent.vGap >= 0) n.vGap = parent.vGap;
     if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
       n.xGap = parent.childrenGap;
       n.childrenGap = parent.childrenGap;
@@ -16327,6 +16336,7 @@
   // Appends the node to `parent`; does NOT push undo or persist — callers do.
   function buildCalendarChildNode(parent, month, year) {
     const n = newNode("");
+    if (typeof parent.vGap === "number" && parent.vGap >= 0) n.vGap = parent.vGap;
     if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
       n.xGap = parent.childrenGap;
       n.childrenGap = parent.childrenGap;
@@ -16393,6 +16403,7 @@
     if (!parent) return addChild(nodeId); // root has no siblings -> add child instead
     pushUndo();
     const n = newNode("");
+    if (typeof parent.vGap === "number" && parent.vGap >= 0) n.vGap = parent.vGap;
     if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
       n.xGap = parent.childrenGap;
       n.childrenGap = parent.childrenGap;
@@ -17247,7 +17258,7 @@
       const distLabel = document.createElement("div");
       distLabel.className = "ctx-item";
       distLabel.style.cursor = "default";
-      distLabel.textContent = "↔️ Children distance";
+      distLabel.textContent = "↔️ Horizontal  ·  ↕️ Vertical gap";
       ctxMenu.appendChild(distLabel);
 
       const distRow = document.createElement("div");
@@ -17264,9 +17275,40 @@
       distUnit.className = "ctx-distance-unit";
       distUnit.textContent = "px";
       distRow.appendChild(distUnit);
+
+      // v792: vertical gap (space between this node's children, stacked
+      // top to bottom). Applies to this node's level and every level below.
+      const vInput = document.createElement("input");
+      vInput.type = "number";
+      vInput.min = String(MIN_V_GAP);
+      vInput.max = String(MAX_V_GAP);
+      vInput.step = "2";
+      vInput.value = Math.round((typeof node.vGap === "number" && node.vGap >= 0) ? node.vGap : SLOT_GAP);
+      vInput.className = "ctx-distance-input ctx-distance-input-v";
+      vInput.title = "Vertical gap between children (this level and all lower levels)";
+      distRow.appendChild(vInput);
+      const vUnit = document.createElement("span");
+      vUnit.className = "ctx-distance-unit";
+      vUnit.textContent = "px";
+      distRow.appendChild(vUnit);
       ctxMenu.appendChild(distRow);
 
       const allDescendants = collectDescendants(node);
+
+      vInput.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { vInput.blur(); closeContextMenu(); }
+      });
+      vInput.addEventListener("change", () => {
+        const v = parseFloat(vInput.value);
+        if (Number.isNaN(v)) return;
+        const clamped = Math.max(MIN_V_GAP, Math.min(MAX_V_GAP, Math.round(v)));
+        pushUndo();
+        node.vGap = clamped;
+        allDescendants.forEach(d => { d.vGap = clamped; });
+        renderAll();
+        persist();
+      });
 
       distRow.addEventListener("click", (e) => e.stopPropagation());
       distInput.addEventListener("keydown", (e) => {
@@ -17284,7 +17326,8 @@
         persist();
       });
 
-      const anyCustomGap = allDescendants.some(d => typeof d.xGap === "number" && d.xGap >= 0);
+      const anyCustomGap = allDescendants.some(d => typeof d.xGap === "number" && d.xGap >= 0)
+        || typeof node.vGap === "number" || allDescendants.some(d => typeof d.vGap === "number");
       if (anyCustomGap) {
         const resetAll = document.createElement("div");
         resetAll.className = "ctx-item";
@@ -17292,8 +17335,9 @@
         resetAll.addEventListener("click", () => {
           closeContextMenu();
           pushUndo();
-          allDescendants.forEach(d => { d.xGap = null; delete d.childrenGap; });
+          allDescendants.forEach(d => { d.xGap = null; delete d.childrenGap; delete d.vGap; });
           delete node.childrenGap;
+          delete node.vGap;
           renderAll();
           persist();
         });
@@ -17536,6 +17580,9 @@
   // value the input would accept.
   const MIN_X_GAP = 10;
   const MAX_X_GAP = 900;
+  // v792: vertical (sibling) gap bounds. Min matches the overlap-resolver PAD.
+  const MIN_V_GAP = 4;
+  const MAX_V_GAP = 200;
 
   // Right-click on a parent→child connector: lets the user type an exact
   // pixel distance for that one hop (see gapFor/place/placeLocal), instead
