@@ -12675,6 +12675,11 @@
       ? theme.connectorColor
       : pillColor(colorNode.color || branchColorFor(state.current.root, colorNode) || "#5b6272");
     const pill = isPillTheme();
+    // Elbow connectors (any theme) get the same clean treatment as the
+    // Mindomo style — solid, no halo/glow, fully opaque — so siblings
+    // sharing one vertical trunk overlap exactly and read as a single line.
+    const elbowShape = child.connectorShape || (theme && theme.connectorShape) || "curved";
+    const clean = pill || (orientation !== "v" && elbowShape === "elbow");
     const depth = opts.depth != null ? opts.depth : child._depth;
     // Thickness steps down by level so the trunk clearly reads as more
     // important than a leaf twig — matches the box-styling tiers (pill,
@@ -12703,8 +12708,8 @@
     halo.setAttribute("stroke-linecap", "round");
     // Keep the halo dotted in lockstep with the main line at level 3+, so it
     // doesn't show through the gaps as a solid line underneath the dots.
-    if (depth >= 3 && !pill) halo.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
-    if (!pill) g.appendChild(halo); // Pill style: clean solid line, no halo
+    if (depth >= 3 && !clean) halo.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
+    if (!clean) g.appendChild(halo); // clean (Mindomo / elbow): solid line, no halo
 
     const el = document.createElementNS("http://www.w3.org/2000/svg", "path");
     el.setAttribute("d", path);
@@ -12712,11 +12717,11 @@
     el.setAttribute("stroke-width", width);
     el.setAttribute("fill", "none");
     el.setAttribute("stroke-linecap", "round");
-    el.setAttribute("opacity", depth <= 1 ? "0.95" : "1");
-    if (depth === 1 && !pill) el.setAttribute("filter", "url(#glow)");
+    el.setAttribute("opacity", !clean && depth <= 1 ? "0.95" : "1");
+    if (depth === 1 && !clean) el.setAttribute("filter", "url(#glow)");
     // From level 3 down, switch to a dotted line — reinforces that these
     // are the least important tier, on top of the thinner stroke.
-    if (depth >= 3 && !pill) el.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
+    if (depth >= 3 && !clean) el.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
     // "Arrow" connector style — set per-hop via the combined "Connector
     // style" picker (see openConnectorContextMenu), or inherited from the
     // map-wide default (root node's menu) when this hop has no override —
