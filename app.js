@@ -343,7 +343,7 @@
     // whole subtree by the caller. Children are stacked and centered
     // entirely within that local slot, so a node's own layout never
     // depends on, or disturbs, anything outside its own subtree.
-    function place(node, depth, sign, y, parentOffset) {
+    function place(node, depth, sign, y, parentOffset, sibW) {
       // A node normally just inherits the direction its ancestor branch is
       // already fanning (the `sign` handed down from the caller). But if
       // this particular node has its own explicit left/right override
@@ -382,8 +382,13 @@
       }
       // v797: node sits at `y`; children use their packed offsets (see packSiblings).
       node._y = y;
+      // Level columns: this node's children start past the widest node in
+      // THIS node's own sibling group (not just past this node), so a narrow
+      // node's children can never start underneath a wider sibling's box.
+      const colW = Math.max(node._w || 0, sibW || 0);
+      const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
       kids(node).forEach(c => {
-        place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + node._w);
+        place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
       });
     }
 
@@ -393,10 +398,11 @@
       list.forEach(n => subtreeExtent(n));
       // v797: contour-pack the top-level branches (centred on the root's y = 0).
       packSiblings(list, slotGapOf(root));
+      const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
       list.forEach(n => {
         // The root is centered on the spine, so its outer edge toward this fan
         // direction is half its own width, not 0.
-        place(n, 1, sign, LAYOUT_RY.get(n) || 0, root._w / 2);
+        place(n, 1, sign, LAYOUT_RY.get(n) || 0, root._w / 2, listW);
       });
     }
 
@@ -510,7 +516,7 @@
       // `y` is the vertical center of the slot already reserved for this
       // node's whole subtree, so its children only ever need to fit inside
       // that local slot.
-      function place(node, curSign, y, parentOffset) {
+      function place(node, curSign, y, parentOffset, sibW) {
         // v559: Timeline's vertical spine defines branch direction. A direct
         // child of a spine branch (level 2) may live on either side, but once
         // it is on the right every deeper descendant keeps fanning right;
@@ -525,8 +531,11 @@
         }
         // v797: node sits at `y`; children use their packed offsets.
         node._y = y;
+        // Level columns — see the Mindmap layout's place().
+        const colW = Math.max(node._w || 0, sibW || 0);
+        const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
         kids(node).forEach(c => {
-          place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + node._w);
+          place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
         });
       }
 
@@ -540,10 +549,11 @@
         list.forEach(n => subtreeExtent(n));
         // v797: contour-pack this branch's children around the branch's own y = 0.
         packSiblings(list, slotGapOf(branch));
+        const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
         list.forEach(n => {
           // The branch sits centered on the spine (branch._x === 0), so its outer
           // edge toward this fan direction is half its own width, not 0.
-          place(n, sign, LAYOUT_RY.get(n) || 0, branch._w / 2);
+          place(n, sign, LAYOUT_RY.get(n) || 0, branch._w / 2, listW);
         });
         let ext = 0;
         (function walk(n) {
