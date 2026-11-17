@@ -826,7 +826,7 @@
     // left edge of the box, so reserve CHECKBOX_W extra px of horizontal room.
     const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
     const padX = (depth === 0 ? 56 : 32) + cbExtra;
-    const vPad = depth === 0 ? 28 : 6; // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
+    const vPad = depth === 0 ? 28 : (depth === 1 && isPillTheme() ? 12 : 6); // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
     const baseH = depth === 0 ? ROOT_H : NODE_H;
     const minW = (depth === 0 ? 130 : 56) + cbExtra;
 
@@ -843,9 +843,11 @@
       h = Math.max(tbox.tableH + vPad + 6, baseH);
       lines = [];
     } else {
-    const baseFontWeight = depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400;
+    const baseFontWeight = isPillTheme()
+      ? (depth === 0 ? 700 : depth === 1 ? 500 : 400)
+      : (depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400);
     const fontWeight = node.bold ? (depth === 0 ? 900 : 800) : baseFontWeight;
-    const fontSize = depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
+    const fontSize = nodeFontSizeFor(depth);
     measureCtx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const rawText = node.text || "(untitled)";
     const text = node.allCaps ? rawText.toUpperCase() : rawText;
@@ -866,7 +868,7 @@
       w = clamp(Math.ceil(widest) + padX + SAFETY, minW, maxBoxW);
     }
 
-    const lineHeight = depth === 0 ? 24 : depth === 3 ? 16 : 17;
+    const lineHeight = isPillTheme() ? Math.ceil(fontSize * 1.3) : (depth === 0 ? 24 : depth === 3 ? 16 : 17);
     h = Math.max(baseH, Math.ceil(lines.length * lineHeight + vPad));
     }
 
@@ -1185,13 +1187,43 @@
       connectorShape: "curved",  // "curved" | "elbow" — map-wide default, set via the root node's right-click menu; any node/connector can override with its own connectorShape
       connectorArrow: false,     // map-wide default arrowhead setting — same idea, per-hop connectorStyle overrides it
       fontMode: "auto",          // "auto" | "custom"
-      fontColor: "#f2f3f7"
+      fontColor: "#f2f3f7",
+      style: "classic",          // "classic" | "pill" — see the Pill style helpers below
+      _classic: null             // snapshot of the classic colors, restored when leaving Pill style
     };
   }
 
   function ensureTheme(map) {
     if (!map) return;
     map.theme = Object.assign(defaultTheme(), map.theme || {});
+  }
+
+  /* ---------------- Mindomo theme (internal id: "pill") ----------------
+     Colored rounded "pill" fills on the root and first-level nodes, larger
+     type on the higher levels, plain black text, solid (never dotted)
+     connectors, and one color per branch shared by the node and its
+     connectors. Auto-assigned branch colors (the PALETTE entries) are
+     remapped to the brighter PILL_PALETTE below for display only, so
+     nothing stored on the nodes changes and switching back is lossless;
+     a color the user picked by hand is always kept as-is. */
+  const PILL_ROOT_COLOR = "#FF6B6B";
+  const PILL_PALETTE = [
+    "#FF6B6B", "#FFB07A", "#F7F08A", "#3DD598", "#0CC9D0",
+    "#5AA9F8", "#A08CF9", "#C77DF0", "#FF8FB8", "#9BE15D"
+  ];
+  function isPillTheme(map) {
+    const m = map || state.current;
+    return !!(m && m.theme && m.theme.style === "pill");
+  }
+  function pillColor(c) {
+    if (!c || !isPillTheme()) return c;
+    const i = PALETTE.indexOf(c);
+    return i >= 0 ? PILL_PALETTE[i] : c;
+  }
+  // Font size by depth: bigger on the higher-level nodes.
+  function nodeFontSizeFor(depth) {
+    if (isPillTheme()) return depth === 0 ? 30 : depth === 1 ? 17 : depth === 2 ? 14.5 : 13.5;
+    return depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
   }
 
   // Default distance for the hop from a node's parent to the node itself,
@@ -12394,7 +12426,7 @@
     el.setAttribute("d", path);
     el.setAttribute("stroke", color);
     el.setAttribute("stroke-width", "2");
-    el.setAttribute("stroke-dasharray", "1, 7");
+    if (!isPillTheme()) el.setAttribute("stroke-dasharray", "1, 7"); // Pill style: solid
     el.setAttribute("stroke-linecap", "round");
     el.setAttribute("fill", "none");
     el.setAttribute("opacity", "0.9");
@@ -12514,14 +12546,15 @@
     const colorNode = opts.colorNode || child;
     const color = theme.connectorMode === "custom"
       ? theme.connectorColor
-      : (colorNode.color || branchColorFor(state.current.root, colorNode) || "#5b6272");
+      : pillColor(colorNode.color || branchColorFor(state.current.root, colorNode) || "#5b6272");
+    const pill = isPillTheme();
     const depth = opts.depth != null ? opts.depth : child._depth;
     // Thickness steps down by level so the trunk clearly reads as more
     // important than a leaf twig — matches the box-styling tiers (pill,
     // solid box, outlined box, plain text). Level 3+ is dotted, so it gets
     // a noticeably thinner stroke than a solid line of the same "weight"
     // would need, since dots read as thin even at low width.
-    const width = depth <= 1 ? 3 : depth === 2 ? 1.8 : 1.1;
+    const width = pill ? (depth <= 1 ? 2.6 : 1.8) : (depth <= 1 ? 3 : depth === 2 ? 1.8 : 1.1);
     const bg = theme.background || defaultBg();
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -12543,8 +12576,8 @@
     halo.setAttribute("stroke-linecap", "round");
     // Keep the halo dotted in lockstep with the main line at level 3+, so it
     // doesn't show through the gaps as a solid line underneath the dots.
-    if (depth >= 3) halo.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
-    g.appendChild(halo);
+    if (depth >= 3 && !pill) halo.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
+    if (!pill) g.appendChild(halo); // Pill style: clean solid line, no halo
 
     const el = document.createElementNS("http://www.w3.org/2000/svg", "path");
     el.setAttribute("d", path);
@@ -12553,10 +12586,10 @@
     el.setAttribute("fill", "none");
     el.setAttribute("stroke-linecap", "round");
     el.setAttribute("opacity", depth <= 1 ? "0.95" : "1");
-    if (depth === 1) el.setAttribute("filter", "url(#glow)");
+    if (depth === 1 && !pill) el.setAttribute("filter", "url(#glow)");
     // From level 3 down, switch to a dotted line — reinforces that these
     // are the least important tier, on top of the thinner stroke.
-    if (depth >= 3) el.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
+    if (depth >= 3 && !pill) el.setAttribute("stroke-dasharray", `0.1, ${width * 2.6}`);
     // "Arrow" connector style — set per-hop via the combined "Connector
     // style" picker (see openConnectorContextMenu), or inherited from the
     // map-wide default (root node's menu) when this hop has no override —
@@ -14885,7 +14918,7 @@
     // existed — treat that the same as "soft" instead of producing a
     // dead "glow-true" class that matches no CSS rule.
     const glowVariant = node.glow === true ? "soft" : node.glow;
-    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "");
+    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "") + (isPillTheme() ? " pill-theme" : "");
     div.dataset.id = node.id;
     div.style.left = (ox + nodeLeftX(node)) + "px";
     div.style.top = (oy + node._y + (node.oy || 0) - h / 2) + "px";
@@ -14900,8 +14933,13 @@
       // it replaces the default navy/orange look with a matching
       // gradient fill and border, the same way a branch's color tints
       // its own node. Falls back to the original fixed look when unset.
-      const rootColor = node.color;
-      if (rootColor) {
+      const rootColor = node.color || (isPillTheme() ? PILL_ROOT_COLOR : null);
+      if (rootColor && isPillTheme()) {
+        // Pill style: flat colored pill instead of the dark gradient.
+        div.style.background = rootColor;
+        div.style.border = "2px solid transparent";
+        div.style.setProperty("--sel-color", rootColor);
+      } else if (rootColor) {
         const lighter = blendHex(rootColor, "#ffffff", 0.18);
         const darker = blendHex(rootColor, "#000000", 0.5);
         div.style.background = `linear-gradient(155deg, ${lighter} 0%, ${darker} 65%)`;
@@ -14912,7 +14950,7 @@
       }
     }
 
-    const color = depth === 0 ? null : (node.color || branchColorFor(state.current.root, node) || "#5b6272");
+    const color = depth === 0 ? null : pillColor(node.color || branchColorFor(state.current.root, node) || "#5b6272");
     // What's actually visible behind this node's text, used both to keep
     // the editing caret visible and, for the solid-filled first level
     // only, to pick a plain black/white text color with good contrast
@@ -14936,7 +14974,7 @@
         div.style.color = color;
       }
     }
-    if (depth === 0) effectiveBg = node.color ? blendHex(node.color, "#000000", 0.5) : "#0A0B24"; // matches --root-fill, or the custom root color's dark gradient end
+    if (depth === 0) effectiveBg = isPillTheme() ? (node.color || PILL_ROOT_COLOR) : node.color ? blendHex(node.color, "#000000", 0.5) : "#0A0B24"; // matches --root-fill, or the custom root color's dark gradient end
     // Level 3+ nodes (outlined boxes and, deeper still, no box at all)
     // have their text tinted with the branch color instead of plain
     // black/white, so the color story stays consistent all the way down
@@ -18396,17 +18434,23 @@
   const connectorColorInput = $("#theme-connector-color");
   const fontModeSel = $("#theme-font-mode");
   const fontColorInput = $("#theme-font-color");
+  const nodeStyleSel = $("#theme-node-style");
 
-  function openThemePanel() {
-    if (!state.current) return;
+  function syncThemePanel() {
     ensureTheme(state.current);
     const t = state.current.theme;
+    nodeStyleSel.value = t.style === "pill" ? "pill" : "classic";
     bgInput.value = t.background || defaultBg();
     connectorModeSel.value = t.connectorMode;
     connectorColorInput.value = t.connectorColor;
     connectorColorInput.disabled = t.connectorMode !== "custom";
     fontModeSel.value = t.fontMode;
     fontColorInput.value = t.fontColor;
+  }
+
+  function openThemePanel() {
+    if (!state.current) return;
+    syncThemePanel();
     zoomModalOpen(themeModal);
   }
 
@@ -27057,6 +27101,29 @@
     const ret = noteReturn;
     closeNoteModal();
     runViewerReturn(ret);
+  });
+
+  // Pill style preset: colored pill nodes, bigger high-level fonts, all-black
+  // text, solid per-branch connectors, light canvas. The classic colors are
+  // remembered so switching back restores exactly what the map had before.
+  nodeStyleSel.addEventListener("change", () => {
+    if (!state.current) return;
+    ensureTheme(state.current);
+    const t = state.current.theme;
+    if (nodeStyleSel.value === "pill" && t.style !== "pill") {
+      const snap = { background: t.background, connectorMode: t.connectorMode, fontMode: t.fontMode, fontColor: t.fontColor };
+      updateTheme({ style: "pill", _classic: snap, background: "#FCFCFC", connectorMode: "branch", fontMode: "custom", fontColor: "#000000" });
+    } else if (nodeStyleSel.value !== "pill" && t.style === "pill") {
+      const c = t._classic || {};
+      updateTheme({
+        style: "classic", _classic: null,
+        background: "background" in c ? c.background : null,
+        connectorMode: c.connectorMode || "branch",
+        fontMode: c.fontMode || "auto",
+        fontColor: c.fontColor || "#f2f3f7"
+      });
+    }
+    syncThemePanel();
   });
 
   bgInput.addEventListener("input", () => updateTheme({ background: bgInput.value }));
