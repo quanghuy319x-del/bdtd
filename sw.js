@@ -1,9 +1,12 @@
-const CACHE_NAME = "branchline-pwa-v772";
+// Version comes from the registration URL (index.html registers "./sw.js?v=NNN"),
+// so bumping ?v= in index.html is now the ONLY place to change it.
+const V = new URL(self.location.href).searchParams.get("v") || "0";
+const CACHE_NAME = "branchline-pwa-v" + V;
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=772",
-  "./app.js?v=772",
+  "./style.css?v=" + V,
+  "./app.js?v=" + V,
   "./assets/yahoo/smile-or-happy-face.gif",
   "./assets/yahoo/sad-or-frown-face.gif",
   "./assets/yahoo/winking.gif",
