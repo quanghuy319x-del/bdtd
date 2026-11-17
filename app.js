@@ -12464,10 +12464,13 @@
       return `M ${x1} ${y1} L ${x2} ${y2}`;
     }
     const mx = x1 + dx / 2;
-    const rr = Math.min(r, Math.abs(dx) / 2, Math.abs(dy) / 2);
+    // Org-chart look: the stub meets the shared trunk at a sharp T-junction
+    // (so sibling lines overlap cleanly on the trunk) and only the turn into
+    // each child is rounded.
+    const rr = Math.min(r, Math.abs(dx) / 2, Math.abs(dy));
     const sx = dx >= 0 ? 1 : -1;
     const sy = dy >= 0 ? 1 : -1;
-    return `M ${x1} ${y1} L ${mx - sx * rr} ${y1} Q ${mx} ${y1} ${mx} ${y1 + sy * rr} L ${mx} ${y2 - sy * rr} Q ${mx} ${y2} ${mx + sx * rr} ${y2} L ${x2} ${y2}`;
+    return `M ${x1} ${y1} L ${mx} ${y1} L ${mx} ${y2 - sy * rr} Q ${mx} ${y2} ${mx + sx * rr} ${y2} L ${x2} ${y2}`;
   }
 
   // Same "elbow" idea, but for vertically-stacked hops (Timeline layout's
@@ -12561,9 +12564,9 @@
   function elbowThrough(x1, y1, xc, y2, x2, r) {
     const dy = y2 - y1;
     if (Math.abs(dy) < 1) return `M ${x1} ${y1} L ${x2} ${y2}`;
-    const rr = Math.min(r, Math.abs(xc - x1), Math.abs(x2 - xc), Math.abs(dy) / 2);
+    const rr = Math.min(r, Math.abs(x2 - xc), Math.abs(dy));
     const sx = x2 >= x1 ? 1 : -1, sy = dy >= 0 ? 1 : -1;
-    return `M ${x1} ${y1} L ${xc - sx * rr} ${y1} Q ${xc} ${y1} ${xc} ${y1 + sy * rr} L ${xc} ${y2 - sy * rr} Q ${xc} ${y2} ${xc + sx * rr} ${y2} L ${x2} ${y2}`;
+    return `M ${x1} ${y1} L ${xc} ${y1} L ${xc} ${y2 - sy * rr} Q ${xc} ${y2} ${xc + sx * rr} ${y2} L ${x2} ${y2}`;
   }
 
   function avoidBoxes(parent, child, ox, oy, x1, y1, x2, y2, shape, sign, dflt) {
@@ -12580,7 +12583,7 @@
       for (const f of [0.25, 0.75, 0.12, 0.88]) {
         const xc = x1 + dx * f;
         if (!connPathBlocked([[x1, y1], [xc, y1], [xc, y2], [x2, y2]], ox, oy, parent, child)) {
-          return elbowThrough(x1, y1, xc, y2, x2, 14);
+          return elbowThrough(x1, y1, xc, y2, x2, 10);
         }
       }
     }
@@ -12633,7 +12636,7 @@
     // it falls back to the map-wide default from the root node's menu.
     const shape = child.connectorShape || (state.current.theme && state.current.theme.connectorShape) || "curved";
     const dflt = shape === "elbow"
-      ? roundedElbowPath(x1, y1, x2, y2, 14)
+      ? roundedElbowPath(x1, y1, x2, y2, 10)
       : (() => { const dx = (x2 - x1) * 0.55; return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`; })();
     return avoidBoxes(parent, child, ox, oy, x1, y1, x2, y2, shape, sign, dflt);
   }
@@ -12717,6 +12720,7 @@
     el.setAttribute("stroke-width", width);
     el.setAttribute("fill", "none");
     el.setAttribute("stroke-linecap", "round");
+    el.setAttribute("stroke-linejoin", "round");
     el.setAttribute("opacity", !clean && depth <= 1 ? "0.95" : "1");
     if (depth === 1 && !clean) el.setAttribute("filter", "url(#glow)");
     // From level 3 down, switch to a dotted line — reinforces that these
