@@ -12543,7 +12543,7 @@
     return pts;
   }
 
-  function connPathBlocked(pts, ox, oy, parent, child) {
+  function connPathBlocked(pts, ox, oy, parent, child, ownOnly) {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const p of pts) {
       if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
@@ -12562,6 +12562,7 @@
       const R = connRect(n, ox, oy, -2);
       if (R.r > R.l && R.b > R.t && hits(R)) return true;
     }
+    if (ownOnly) return false;
     const all = virtualAllNodes || [];
     for (let i = 0; i < all.length; i++) {
       const n = all[i];
@@ -12586,19 +12587,13 @@
     const defPts = isElbow
       ? [[x1, y1], [x1 + dx / 2, y1], [x1 + dx / 2, y2], [x2, y2]]
       : sampleCubic(x1, y1, x1 + dx * 0.55, y1, x2 - dx * 0.55, y2, x2, y2);
-    if (!connPathBlocked(defPts, ox, oy, parent, child)) return dflt;
+    // Only re-route when the normal path actually cuts through its own
+    // parent or child box. Moving the bend of one sibling (or reacting to
+    // unrelated neighbours) would split the shared trunk into several, which
+    // looks far worse than the rare touch, so that is deliberately not done.
+    if (!connPathBlocked(defPts, ox, oy, parent, child, true)) return dflt;
 
-    // 1) Same side-to-side route, vertical run moved elsewhere in the gap.
-    if (Math.abs(dx) > 30 && sign * dx > 0) {
-      for (const f of [0.25, 0.75, 0.12, 0.88]) {
-        const xc = x1 + dx * f;
-        if (!connPathBlocked([[x1, y1], [xc, y1], [xc, y2], [x2, y2]], ox, oy, parent, child)) {
-          return elbowThrough(x1, y1, xc, y2, x2, 10);
-        }
-      }
-    }
-
-    // 2) Parent's bottom/top edge to the child's top/bottom edge.
+    // Leave the parent's bottom/top edge and enter the child's top/bottom edge.
     const P = connRect(parent, ox, oy, 0), C = connRect(child, ox, oy, 0);
     const down = C.t >= P.b + 4, up = C.b <= P.t - 4;
     if (down || up) {
@@ -12621,7 +12616,7 @@
         pts = sampleCubic(xa, ya, xa, ya + dy * 0.55, xb, yb - dy * 0.55, xb, yb);
         d = `M ${xa} ${ya} C ${xa} ${ya + dy * 0.55}, ${xb} ${yb - dy * 0.55}, ${xb} ${yb}`;
       }
-      if (!connPathBlocked(pts, ox, oy, parent, child)) return d;
+      if (!connPathBlocked(pts, ox, oy, parent, child, true)) return d;
     }
     return dflt;
   }
