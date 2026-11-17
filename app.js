@@ -872,6 +872,28 @@
     const baseH = depth === 0 ? ROOT_H : NODE_H;
     const minW = (depth === 0 ? 130 : 56) + cbExtra;
 
+    // v804: icons (notes, links, photos, timer...) sit inline at the END of the
+    // node text instead of in a row below it. Work out their width first so the
+    // text measuring/wrapping below leaves room for them. Root and table nodes
+    // keep the old below-the-text strip.
+    const eImages = getNodeImages(node);
+    const eIconCount =
+      stripBucketCount(getNodeNotes(node).length)
+      + stripBucketCount(getNodeUrls(node).length)
+      + nodeTaskNoteMarkerCount(node)
+      + (nodeAffirmationWins(node) ? 1 : 0)
+      + (getNodeTimePlayed(node) ? 1 : 0)
+      + Math.max(brainstormPoints(node) > 0 ? 1 : 0, Math.min(1, nodeSubtaskBrainstormMarkerCount(node)));
+    let inlineStripW = 0;
+    if (depth !== 0 && !nodeIsTable(node) && (eIconCount || eImages.length)) {
+      const eShown = eImages.length > STRIP_OVERFLOW_CAP ? 1 : eImages.length;
+      const eItems = eIconCount + eShown;
+      // 16px cells, 3px gaps; the timer cell is wider (it shows the total time).
+      inlineStripW = eItems * 16 + (eItems - 1) * 3 + (getNodeTimePlayed(node) ? 18 : 0);
+    }
+    node._inlineStripW = inlineStripW;
+    const inlineExtra = inlineStripW ? inlineStripW + 6 : 0;
+
     let w, h, lines;
     if (nodeIsTable(node)) {
       const tbox = computeTableBox(node);
@@ -897,17 +919,17 @@
     // and actual rendered width never causes the CSS wrap to break a word
     // mid-letter (e.g. "Risk" -> "Ris"/"k").
     const SAFETY = 6;
-    const maxBoxW = depth === 0 ? 340 : 230;
-    const maxTextW = maxBoxW - padX;
+    const maxBoxW = depth === 0 ? 340 : 320; // v804: was 230 for non-root nodes
+    const maxTextW = maxBoxW - padX - inlineExtra;
 
-    const oneLineW = Math.ceil(measureW(text)) + padX + SAFETY;
+    const oneLineW = Math.ceil(measureW(text)) + padX + SAFETY + inlineExtra;
     if (oneLineW <= maxBoxW && !/\n/.test(text)) {
       w = clamp(oneLineW, minW, maxBoxW);
       lines = [text];
     } else {
       lines = wrapText(text, maxTextW);
       const widest = Math.max(...lines.map(l => measureW(l)));
-      w = clamp(Math.ceil(widest) + padX + SAFETY, minW, maxBoxW);
+      w = clamp(Math.ceil(widest) + padX + SAFETY + inlineExtra, minW, maxBoxW);
     }
 
     const lineHeight = isPillTheme() ? Math.ceil(fontSize * 1.3) : (depth === 0 ? 24 : depth === 3 ? 16 : 17);
@@ -934,7 +956,7 @@
       + (getNodeTimePlayed(node) ? 1 : 0)
       + (brainstormPoints(node) > 0 ? 1 : 0);
     let stripW = 0, stripH = 0;
-    if (stripIconCountForBox || nodeImages.length) {
+    if (!inlineStripW && (stripIconCountForBox || nodeImages.length)) {
       // Past STRIP_OVERFLOW_CAP photos, collapse down to a single cover
       // thumbnail with a count badge (see renderNode) instead of a wall
       // of thumbnails, so a node with dozens of photos still reads as
@@ -9798,14 +9820,15 @@
     return !!(s && (isBrainstormPrefixText(s.text) || hasBrainstormContent(s)));
   }
   function nodeTaskNoteMarkerCount(node) {
-    let count = 0;
+    let tasks = 0, subs = 0;
     getNodeTasks(node).forEach((t) => {
-      if (taskHasNotes(t)) count++;
+      if (taskHasNotes(t)) tasks++;
       getTaskSubtasks(t).forEach((sub) => {
-        if (taskHasNotes(sub)) count++;
+        if (taskHasNotes(sub)) subs++;
       });
     });
-    return count;
+    // v804: 3+ category notes (or 3+ task notes) collapse to one badge icon each.
+    return stripBucketCount(tasks) + stripBucketCount(subs);
   }
   function nodeSubtaskBrainstormMarkerCount(node) {
     let count = 0;
@@ -9937,7 +9960,7 @@
   // to a single representative icon + a "Nx" count badge once there are
   // more than this many, so a node with dozens of any one thing still
   // reads as one compact cell instead of a wall of tiny icons.
-  const STRIP_OVERFLOW_CAP = 16;
+  const STRIP_OVERFLOW_CAP = 2; // v804: 3+ of the same item type collapse to one icon with a count badge
   // How many cells a bucket of items (all the notes, or all the links)
   // contributes to the strip's layout — every item while under the cap,
   // or just the one stand-in cell once collapsed.
@@ -15113,7 +15136,7 @@
     // existed — treat that the same as "soft" instead of producing a
     // dead "glow-true" class that matches no CSS rule.
     const glowVariant = node.glow === true ? "soft" : node.glow;
-    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "") + (isPillTheme() ? " pill-theme" : "");
+    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "") + (isPillTheme() ? " pill-theme" : "") + (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) ? " has-inline-strip" : "");
     div.dataset.id = node.id;
     div.style.left = (ox + nodeLeftX(node)) + "px";
     div.style.top = (oy + node._y + (node.oy || 0) - h / 2) + "px";
@@ -15212,6 +15235,12 @@
         handleNodePhotoFiles(node.id, [file]);
       });
     }
+    }
+
+    // v804: while editing, the icon strip is hidden but its room stays reserved
+    // on the right so the text does not re-wrap.
+    if (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) && node.id === state.editingId) {
+      div.style.paddingRight = (8 + node._inlineStripW + 6) + "px";
     }
 
     // Optional checkbox (right-click menu -> "Add checkbox"). Drawn purely in
@@ -15357,8 +15386,8 @@
     const stripIconCount =
       stripBucketCount(nodeNotes.length)
       + stripBucketCount(nodeUrls.length)
-      + tasksWithNotes.length
-      + subtasksWithNotes.length
+      + stripBucketCount(tasksWithNotes.length)
+      + stripBucketCount(subtasksWithNotes.length)
       + (affirmationWins ? 1 : 0)
       + (timePlayed ? 1 : 0)
       + (nodeHasBrainstormMarker ? 1 : 0);
@@ -15375,7 +15404,8 @@
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCount + shownCount;
       const large = itemCount <= 10;
-      strip.className = "node-photo-strip" + (large ? " large" : "");
+      const inlineStrip = depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node);
+      strip.className = "node-photo-strip" + (large || inlineStrip ? " large" : "") + (inlineStrip ? " inline" : "");
       strip.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       strip.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
       if (nodeImages.length) {
@@ -15397,7 +15427,7 @@
       const thumbPx = large ? 18 : 13.5;
       const gapPx = 3;
       const cols = Math.min(itemCount, 5);
-      strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
+      if (!inlineStrip) strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
 
       // Shared markup for the note icon — same SVG whether it's one of a
       // node's own notes, a task's note, or (once collapsed) the single
@@ -15475,7 +15505,8 @@
       // Not draggable: unlike a node's own notes, a task's notes stay
       // with the task, not the node, so they don't make sense to drag
       // onto another node on their own.
-      tasksWithNotes.forEach((t) => {
+      const tasksOverflow = tasksWithNotes.length > STRIP_OVERFLOW_CAP;
+      (tasksOverflow ? tasksWithNotes.slice(0, 1) : tasksWithNotes).forEach((t) => {
         const taskNoteIcon = document.createElement("span");
         // A task's note counts as a DRC note by the same rule as a
         // node's own notes — title exactly "DRC" (see isDRCNote) — so it
@@ -15508,6 +15539,7 @@
         taskNoteIcon.addEventListener("dragend", endMarkerDrag);
         taskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (tasksOverflow) { openTasksModal(node.id); return; }
           openNoteModal(node.id, undefined, null, t.id);
         });
         taskNoteIcon.addEventListener("contextmenu", (e) => {
@@ -15515,6 +15547,14 @@
           e.stopPropagation();
           openTasksModal(node.id);
         });
+        if (tasksOverflow) {
+          taskNoteIcon.draggable = false;
+          taskNoteIcon.title = `${tasksWithNotes.length} category notes — click to open Categories`;
+          const tBadge = document.createElement("span");
+          tBadge.className = "node-marker-count";
+          tBadge.textContent = String(tasksWithNotes.length);
+          taskNoteIcon.appendChild(tBadge);
+        }
         strip.appendChild(taskNoteIcon);
       });
 
@@ -15522,7 +15562,8 @@
       // named "DRC" shares the node's single DRC note instead (see the
       // redirect in openNoteModal), so it never shows up here on its own;
       // it already reads on the node as part of the DRC note above.
-      subtasksWithNotes.forEach(({ t, s }) => {
+      const subtasksOverflow = subtasksWithNotes.length > STRIP_OVERFLOW_CAP;
+      (subtasksOverflow ? subtasksWithNotes.slice(0, 1) : subtasksWithNotes).forEach(({ t, s }) => {
         const subtaskNoteIcon = document.createElement("span");
         const firstSubtaskNote = getTaskNotes(s)[0];
         const subtaskNoteIsDRC = isDRCNote(firstSubtaskNote);
@@ -15548,6 +15589,7 @@
         subtaskNoteIcon.addEventListener("dragend", endMarkerDrag);
         subtaskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
+          if (subtasksOverflow) { openTasksModal(node.id); return; }
           openNoteModal(node.id, undefined, null, t.id, undefined, false, s.id);
         });
         subtaskNoteIcon.addEventListener("contextmenu", (e) => {
@@ -15555,6 +15597,14 @@
           e.stopPropagation();
           openTasksModal(node.id);
         });
+        if (subtasksOverflow) {
+          subtaskNoteIcon.draggable = false;
+          subtaskNoteIcon.title = `${subtasksWithNotes.length} task notes — click to open Categories`;
+          const sBadge = document.createElement("span");
+          sBadge.className = "node-marker-count";
+          sBadge.textContent = String(subtasksWithNotes.length);
+          subtaskNoteIcon.appendChild(sBadge);
+        }
         strip.appendChild(subtaskNoteIcon);
       });
 

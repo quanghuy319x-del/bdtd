@@ -11928,3 +11928,28 @@ body.signed-out #mindmap-list{display:none!important}
 
 /* v793: compact non-root node boxes (min height 28px) for tighter vertical spacing. */
 .node:not(.depth-0){ padding-top:1px; padding-bottom:1px; padding-left:8px; padding-right:8px; } /* v803: tighter text-to-border gap */
+
+
+/* v804: icons (notes, links, photos, timer...) sit inline at the end of the node text
+   instead of in a row below it. Root and table nodes keep the old layout. */
+.node.has-inline-strip{
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+.node-photo-strip.large.inline{
+  flex-wrap: nowrap;
+  width: auto;
+  max-width: none;
+  margin: 0 0 0 6px;
+  gap: 3px;
+  align-self: center;
+  flex: none;
+}
+.node-photo-strip.large.inline .node-photo-thumb{
+  width: 16px; height: 16px;
+  border-radius: 4px;
+}
+.node-photo-strip.large.inline .node-timer-badge{
+  width: 34px; min-width: 34px;
+}
