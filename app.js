@@ -15878,6 +15878,7 @@
         // independently of node._y so it stays correct even after a sibling
         // reorder shifts the node into a new slot mid-drag.
         startAbsY: node._y + (node.oy || 0),
+        startAbsX: node._x + (node.ox || 0),
         moved: false,
         dropTargetId: null,
         // How much of the current drag delta is already "baked into" the
@@ -15891,7 +15892,12 @@
         descendants: collectDescendants(node).map(c => ({
           id: c.id,
           startOx: c.ox || 0,
-          startOy: c.oy || 0
+          startOy: c.oy || 0,
+          // Absolute position at drag start, so the branch can be kept
+          // rigid even when a live reorder/flip re-runs the layout and
+          // moves every automatic slot underneath it.
+          startAbsX: (c._x || 0) + (c.ox || 0),
+          startAbsY: (c._y || 0) + (c.oy || 0)
         }))
       };
     }
@@ -18298,6 +18304,18 @@
     const targetAbsY = dragCandidate.startAbsY + dyLocal;
     const reordered = maybeReorderSiblings(node, targetAbsY);
     node.oy = targetAbsY - node._y;
+    // Keep the whole branch rigid: place the dragged node and every
+    // descendant at (their position when the drag began) + (drag delta),
+    // measured against the CURRENT layout slots. A sibling reorder or side
+    // flip re-lays-out the map and shifts every slot, so offsets copied from
+    // before that change made the children jump while the parent stayed put.
+    node.ox = dragCandidate.startAbsX + dxLocal - node._x;
+    dragCandidate.descendants.forEach(d => {
+      const dNode = findNode(d.id);
+      if (!dNode) return;
+      dNode.ox = d.startAbsX + dxLocal - (dNode._x || 0);
+      dNode.oy = d.startAbsY + dyLocal - (dNode._y || 0);
+    });
 
     if (reordered || flipped) {
       // Sibling order or side changed — everyone needs a fresh layout pass,
@@ -18345,8 +18363,6 @@
     dragCandidate.descendants.forEach(d => {
       const dNode = findNode(d.id);
       if (!dNode) return;
-      dNode.ox = d.startOx + dxLocal;
-      dNode.oy = d.startOy + dyLocal;
       if (reordered || flipped) {
         // A full reposition already ran above (using each descendant's
         // pre-update ox/oy) — redo it now that the up-to-date offsets are
@@ -18463,13 +18479,14 @@
         const worldYAtDrop = node._y + (node.oy || 0);
         const flippedH = maybeFlipSideOnDrop(node);
         const flippedV = maybeFlipVSideOnDrop(node);
-        if (flippedH || flippedV) {
-          layout(state.current.root);
-          // Keep the node exactly where it visually was at release instead
-          // of letting it jump to the new side's raw slot center.
-          node.ox = worldXAtDrop - node._x;
-          node.oy = worldYAtDrop - node._y;
-        }
+        // Auto-arrange on drop: the sibling order and side were already
+        // decided live during the drag, so clear the manual offset on the
+        // dragged node and its whole subtree and let it settle into its
+        // computed slot (same result as the Auto-arrange button, but only
+        // for the branch that was just moved).
+        node.ox = 0; node.oy = 0;
+        collectDescendants(node).forEach(d => { d.ox = 0; d.oy = 0; });
+        layout(state.current.root);
         // Deliberately no ox/oy reset here. They're already recomputed
         // fresh on every mousemove to reflect exactly where the node was
         // dragged to relative to its current (possibly reordered or
