@@ -1296,7 +1296,8 @@
   // they use half the normal spacing (a custom xGap on a node still
   // always wins, regardless of connector shape).
   function defaultGapForDepth(depth) {
-    const base = depth === 1 ? ROOT_X_GAP : X_GAP;
+    // v802: every hop uses the same default length (the root hop used to be 2x longer).
+    const base = X_GAP;
     const isElbow = state.current && state.current.theme && state.current.theme.connectorShape === "elbow";
     return isElbow ? base / 2 : base;
   }
