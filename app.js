@@ -31359,19 +31359,31 @@ function closeSubtaskFocusMode() {
     if (calOptionsMenu && !calOptionsMenu.classList.contains("hidden")) renderCalendarOptionsMenu();
   }
 
-  function openCalendarModal() {
+  function openCalendarModal(opts) {
     calendarPasteSelectedDate = null;
     commitEditIfActive();
     closeContextMenu();
+    calendarCancelSlide();
     calCursor = new Date();
     calCursor.setDate(1);
     restoreCalendarWindowSize();
     renderCalendar();
+    if (opts && opts.instant) {
+      // v790: startup landing view. No zoom-from-icon animation and an opaque
+      // backdrop, so the mindmap never flashes behind the Calendar.
+      clearTimeout(calendarModal.__zoomTimer);
+      calendarModal.classList.add("calendar-startup");
+      bringPopupToFront(calendarModal);
+      calendarModal.classList.remove("hidden", "modal-zoom-init");
+      syncCalendarResponsiveMetrics();
+      return;
+    }
     zoomModalOpen(calendarModal);
   }
   function closeCalendarModal() {
     calendarPasteSelectedDate = null;
-    zoomModalClose(calendarModal);
+    calendarCancelSlide();
+    zoomModalClose(calendarModal, () => calendarModal.classList.remove("calendar-startup"));
   }
 
   // v695: date-specific clipboard photo AND URL hosts. Prefer the live
@@ -31990,52 +32002,84 @@ function closeSubtaskFocusMode() {
     syncCalendarResponsiveMetrics();
   }
 
-  // v582: iPhone-like horizontal month transition on phones. Desktop/Q/6M
-  // keep their immediate navigation behavior.
-  let calMonthAnimating = false;
-  function animateCalendarMonthChange(direction) {
-    const phoneMonth = window.matchMedia("(max-width: 640px)").matches && calendarDesktopViewMode() === "month";
+  // v790: smooth month paging in EVERY view (Month / 2M / Q / 6M, desktop + phone).
+  // The old grid is cloned into a "ghost" that stays on screen while the new
+  // month is rendered underneath; both slide + cross-fade together with the
+  // Web Animations API (transform/opacity only -> compositor-driven, no blank
+  // frame between "out" and "in"). Rapid clicks interrupt cleanly instead of
+  // being ignored.
+  let calMonthAnimating = false; // kept for the touch handlers; never blocks navigation now
+  let calSlideGhost = null;
+  const CAL_SLIDE_MS = 340;
+  const CAL_SLIDE_EASE = "cubic-bezier(.22,.82,.28,1)";
+  function calendarCancelSlide() {
+    if (calSlideGhost) { calSlideGhost.remove(); calSlideGhost = null; }
+    try { calGridEl.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+    try { calMonthLabelEl.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+    calendarCard.classList.remove("calendar-sliding");
+  }
+  function animateCalendarMonthChange(direction, step) {
+    step = step || 1;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!phoneMonth || reduceMotion) {
-      calCursor.setMonth(calCursor.getMonth() + direction);
+    const canAnimate = !reduceMotion && typeof calGridEl.animate === "function" &&
+      !calendarModal.classList.contains("hidden");
+    calendarCancelSlide();
+    if (!canAnimate) {
+      calCursor.setMonth(calCursor.getMonth() + direction * step);
       renderCalendar();
       return;
     }
-    if (calMonthAnimating) return;
-    calMonthAnimating = true;
-    const outX = direction > 0 ? "-22%" : "22%";
-    calGridEl.style.setProperty("--cal-slide-x", outX);
-    calGridEl.classList.add("calendar-month-slide-out");
-    calMonthLabelEl.classList.add("calendar-month-label-fade");
-    setTimeout(() => {
-      calCursor.setMonth(calCursor.getMonth() + direction);
-      renderCalendar();
-      calGridEl.classList.remove("calendar-month-slide-out");
-      calGridEl.style.setProperty("--cal-slide-enter-x", direction > 0 ? "28%" : "-28%");
-      calGridEl.classList.add("calendar-month-slide-in");
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        calGridEl.classList.add("calendar-month-slide-in-active");
-        calMonthLabelEl.classList.remove("calendar-month-label-fade");
-      }));
-      setTimeout(() => {
-        calGridEl.classList.remove("calendar-month-slide-in", "calendar-month-slide-in-active");
-        calGridEl.style.removeProperty("--cal-slide-x");
-        calGridEl.style.removeProperty("--cal-slide-enter-x");
-        calMonthAnimating = false;
-      }, 270);
-    }, 145);
+    const host = calGridEl;
+    const parent = host.offsetParent || host.parentElement;
+    // Snapshot of what is on screen right now.
+    const ghost = host.cloneNode(true);
+    ghost.classList.add("calendar-grid-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.inert = true;
+    ghost.style.left = host.offsetLeft + "px";
+    ghost.style.top = host.offsetTop + "px";
+    ghost.style.width = host.offsetWidth + "px";
+    ghost.style.height = host.offsetHeight + "px";
+    ghost.style.transform = "";
+    ghost.style.opacity = "";
+    calendarCard.classList.add("calendar-sliding");
+    parent.appendChild(ghost);
+    calSlideGhost = ghost;
+
+    // Render the target month (host now shows the NEW content).
+    calCursor.setMonth(calCursor.getMonth() + direction * step);
+    renderCalendar();
+
+    const dist = direction > 0 ? 1 : -1;
+    const opts = { duration: CAL_SLIDE_MS, easing: CAL_SLIDE_EASE, fill: "both" };
+    // Pure slide (no fade): old month exits one full width while the new one enters.
+    ghost.animate([
+      { transform: "translate3d(0,0,0)" },
+      { transform: `translate3d(${-dist * 100}%,0,0)` }
+    ], opts);
+    const inAnim = host.animate([
+      { transform: `translate3d(${dist * 100}%,0,0)` },
+      { transform: "translate3d(0,0,0)" }
+    ], opts);
+    calMonthLabelEl.animate([
+      { transform: `translate3d(${dist * 24}px,0,0)` },
+      { transform: "translate3d(0,0,0)" }
+    ], { duration: CAL_SLIDE_MS, easing: CAL_SLIDE_EASE, fill: "both" });
+
+    inAnim.onfinish = () => {
+      if (calSlideGhost !== ghost) return; // superseded by a newer click
+      ghost.remove();
+      calSlideGhost = null;
+      calendarCard.classList.remove("calendar-sliding");
+      try { inAnim.cancel(); } catch (e) {}
+      try { calMonthLabelEl.getAnimations().forEach(a => a.cancel()); } catch (e) {}
+    };
   }
   calPrevBtn.addEventListener("click", () => {
-    if (window.matchMedia("(max-width: 640px)").matches) return animateCalendarMonthChange(-1);
-    const step = calendarQuarterActive() ? 3 : 1;
-    calCursor.setMonth(calCursor.getMonth() - step);
-    renderCalendar();
+    animateCalendarMonthChange(-1, calendarQuarterActive() ? 3 : 1);
   });
   calNextBtn.addEventListener("click", () => {
-    if (window.matchMedia("(max-width: 640px)").matches) return animateCalendarMonthChange(1);
-    const step = calendarQuarterActive() ? 3 : 1;
-    calCursor.setMonth(calCursor.getMonth() + step);
-    renderCalendar();
+    animateCalendarMonthChange(1, calendarQuarterActive() ? 3 : 1);
   });
   calMonthViewBtn.addEventListener("click", () => setCalendarViewMode("month"));
   calTwoViewBtn.addEventListener("click", () => setCalendarViewMode("two"));
@@ -36382,7 +36426,7 @@ function closeSubtaskFocusMode() {
     function openStartupCalendarOnce() {
       if (startupCalendarOpened || !state.current || !mapsReadyToShow()) return;
       startupCalendarOpened = true;
-      if (calendarModal.classList.contains("hidden")) openCalendarModal();
+      if (calendarModal.classList.contains("hidden")) openCalendarModal({ instant: true });
     }
 
     // If web/custom fonts (e.g. "Inter") are still loading, the very first
@@ -36494,6 +36538,7 @@ function closeSubtaskFocusMode() {
           // If there was no local map to preview (fresh browser / maps only
           // existed on Drive), open one as soon as background sync supplies it.
           if (cloudOnlyMapList) await selectVerifiedCloudMap();
+          if (state.current) openStartupCalendarOnce(); // v790: Drive/cloud sessions land on the Calendar too
           if (!state.current && mapsReadyToShow()) {
             let lastId = null;
             try { lastId = localStorage.getItem(LAST_OPENED_MAP_KEY); } catch (e) {}

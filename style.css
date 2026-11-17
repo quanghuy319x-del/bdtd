@@ -11904,3 +11904,20 @@ body.signed-out #mindmap-list{display:none!important}
   text-decoration-thickness: 1.5px;
   text-decoration-color: currentColor;
 }
+
+
+/* v790: smooth month paging (all views) + Calendar as the startup landing view. */
+.calendar-grid-ghost{
+  position:absolute!important;margin:0!important;box-sizing:border-box;
+  pointer-events:none!important;overflow:hidden!important;
+  will-change:transform,opacity;backface-visibility:hidden;
+}
+#calendar-grid{backface-visibility:hidden}
+.calendar-modal-card.calendar-sliding{overflow-x:clip!important}
+#calendar-modal.calendar-startup{
+  background:var(--cal-bg,#f4f2ec)!important;
+  -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+}
+@media (prefers-reduced-motion:reduce){
+  .calendar-grid-ghost{display:none!important}
+}
