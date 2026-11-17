@@ -118,6 +118,13 @@
   // anchor edge) so packSiblings can keep a wide node from running into a
   // neighbour's children. Timeline keeps the old aligned columns (flag off).
   let LAYOUT_TIGHT = false;
+  // Sibling stacking. false = every sibling gets the FULL vertical extent of its own
+  // subtree, so a node with many children (e.g. CFT2 with 5 rows) is never
+  // flanked by a neighbour sitting inside its span: the node above ends above the
+  // first child row, the node below starts below the last child row.
+  // true  = old v797 behaviour: siblings tuck into each other's empty space
+  // (more compact, but siblings can sit "inside" a neighbour's children block).
+  const LAYOUT_NEST_SIBLINGS = false;
   // v806: with Elbow connectors, siblings share ONE vertical trunk, so they must all
   // start the same distance from their parent. A leftover custom gap on a single
   // child (set by dragging/right-clicking its connector) used to push it closer or
@@ -156,7 +163,14 @@
       const dx = (LAYOUT_TIGHT && dxOf) ? dxOf(c) : 0;
       const p = p0.map(e => ({ top: e.top, bot: e.bot, x0: e.x0 + dx, x1: e.x1 + dx }));
       let y = 0;
-      if (i > 0) {
+      if (i > 0 && !LAYOUT_NEST_SIBLINGS) {
+        // Whole-subtree stacking: clear everything the previous siblings occupy
+        // (at ANY depth) before this sibling's topmost box.
+        let accBot = -Infinity, pTop = Infinity;
+        acc.forEach(e => { if (e.bot > accBot) accBot = e.bot; });
+        p.forEach(e => { if (e.top < pTop) pTop = e.top; });
+        y = accBot + gap - pTop;
+      } else if (i > 0) {
         y = -Infinity;
         const n = Math.min(p.length, acc.length);
         for (let d = 0; d < n; d++) y = Math.max(y, acc[d].bot + gap - p[d].top);
