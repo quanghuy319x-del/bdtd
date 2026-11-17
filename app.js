@@ -17358,7 +17358,8 @@
           return values.every(v => v === values[0]) ? values[0] : null;
         },
         (val) => {
-          node.children.forEach((c) => {
+          // v795: applies to every descendant (all lower levels), not just direct children.
+          collectDescendants(node).forEach((c) => {
             if (val === "arrow") {
               c.connectorStyle = "arrow";
             } else {
