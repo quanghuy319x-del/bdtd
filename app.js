@@ -104,6 +104,20 @@
   // v792: vertical gap between a node's children. A node may carry its own
   // `vGap` (set from the right-click menu, cascaded to all lower levels);
   // otherwise the global SLOT_GAP default applies.
+  // v796: shift a node and everything under it vertically.
+  function shiftSubtreeY(n, dy) {
+    n._y += dy;
+    if (!n.collapsed) kids(n).forEach(c => shiftSubtreeY(c, dy));
+  }
+  // v796: re-centre a freshly laid-out list of sibling subtrees so the midpoint
+  // of its first/last node sits exactly on y=0 (the parent's own y). Without this,
+  // a lone child whose OWN children are lopsided gets pulled off its parent's
+  // centre line, so straight/elbow connectors show a visible jog after Auto-arrange.
+  function alignSiblingsToParent(list) {
+    if (!list.length) return;
+    const mid = (list[0]._y + list[list.length - 1]._y) / 2;
+    if (mid) list.forEach(n => shiftSubtreeY(n, -mid));
+  }
   function slotGapOf(parent) {
     return (parent && typeof parent.vGap === "number" && parent.vGap >= 0) ? parent.vGap : SLOT_GAP;
   }
@@ -358,6 +372,7 @@
         place(n, 1, sign, center, root._w / 2);
         cursor += n._subtreeH + slotGapOf(root);
       });
+      alignSiblingsToParent(list);
     }
 
     layoutSide(right, 1);
@@ -521,7 +536,16 @@
           place(n, sign, center, branch._w / 2);
           cursor += n._subtreeH + slotGapOf(branch);
         });
-        return total;
+        // v796: put the branch's children on the branch's own centre line, then
+        // measure the real vertical extent (symmetric about y=0, since the row
+        // is centred on the branch) so neighbouring rows still can't collide.
+        alignSiblingsToParent(list);
+        let ext = 0;
+        (function walk(n) {
+          ext = Math.max(ext, Math.abs(n._y) + (n._h || NODE_H) / 2);
+          if (!n.collapsed) kids(n).forEach(walk);
+        })({ _y: 0, _h: 0, collapsed: false, children: list });
+        return ext * 2;
       }
 
       const rightHeight = layoutSide(right, 1);
