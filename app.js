@@ -866,7 +866,8 @@
     // A node checkbox (right-click menu -> "Add checkbox") sits inside the
     // left edge of the box, so reserve CHECKBOX_W extra px of horizontal room.
     const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
-    const padX = (depth === 0 ? 56 : 32) + cbExtra;
+    // v803: tighter text-to-border gap on non-root nodes (8px each side, was 16px).
+    const padX = (depth === 0 ? 56 : 16) + cbExtra;
     const vPad = depth === 0 ? 28 : (depth === 1 && isPillTheme() ? 12 : 6); // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
     const baseH = depth === 0 ? ROOT_H : NODE_H;
     const minW = (depth === 0 ? 130 : 56) + cbExtra;
@@ -15217,7 +15218,7 @@
     // CSS (no text content) so it never leaks into the node's editable text.
     // Hidden while editing; the reserved left padding stays so text doesn't jump.
     if (node.checkbox && !nodeIsTable(node)) {
-      div.style.paddingLeft = (16 + CHECKBOX_W) + "px";
+      div.style.paddingLeft = ((node._depth === 0 ? 16 : 8) + CHECKBOX_W) + "px";
       if (node.id !== state.editingId) {
         const cb = document.createElement("span");
         cb.className = "node-checkbox" + (node.checked ? " checked" : "");
