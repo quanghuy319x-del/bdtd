@@ -11927,4 +11927,4 @@ body.signed-out #mindmap-list{display:none!important}
 .ctx-distance-row .ctx-distance-input-v{ margin-left:8px; }
 
 /* v793: compact non-root node boxes (min height 28px) for tighter vertical spacing. */
-.node:not(.depth-0){ padding-top:3px; padding-bottom:3px; }
+.node:not(.depth-0){ padding-top:1px; padding-bottom:1px; }

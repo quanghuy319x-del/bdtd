@@ -194,7 +194,7 @@
       if (!n.collapsed) kids(n).forEach(c => shiftSubtree(c, dy));
     }
 
-    const PAD = 4; // v791: was 10; must stay <= SLOT_GAP or overlap-resolution re-widens the gaps
+    const PAD = 0; // v794: was 10; must stay <= min vertical gap or overlap-resolution re-widens the gaps
     const MAX_PASSES = 8;
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       let moved = false;
@@ -797,7 +797,7 @@
     // left edge of the box, so reserve CHECKBOX_W extra px of horizontal room.
     const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
     const padX = (depth === 0 ? 56 : 32) + cbExtra;
-    const vPad = depth === 0 ? 28 : 10; // v793: was 16 (matches .node:not(.depth-0) padding 3px + 2px border)
+    const vPad = depth === 0 ? 28 : 6; // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
     const baseH = depth === 0 ? ROOT_H : NODE_H;
     const minW = (depth === 0 ? 130 : 56) + cbExtra;
 
@@ -1044,7 +1044,7 @@
     "#756BD1", "#E86BB8", "#F2C94C", "#5DBB63", "#C46DD1"
   ];
 
-  const NODE_H = 28; // v793: was 40 (compact rows; tighter vertical gaps)
+  const NODE_H = 22; // v794: was 40 (compact rows; tighter vertical gaps)
   const ROOT_H = 64;
   // These now represent the actual visual gap between a node's rendered
   // right edge and its child's left edge (place() adds the parent's real
@@ -1056,7 +1056,7 @@
   // wider than the gap between later generations, so first-level branches
   // sit further out from the center.
   const ROOT_X_GAP = X_GAP * 2;
-  const SLOT_GAP = 6; // v791: was 14 (tighter vertical spacing between siblings/children)
+  const SLOT_GAP = 2; // v794: was 14 (tighter vertical spacing between siblings/children)
   const DB_NAME = "branchline_db";
   const DB_VERSION = 4;
   const STORE = "mindmaps";
@@ -17581,7 +17581,7 @@
   const MIN_X_GAP = 10;
   const MAX_X_GAP = 900;
   // v792: vertical (sibling) gap bounds. Min matches the overlap-resolver PAD.
-  const MIN_V_GAP = 4;
+  const MIN_V_GAP = 0;
   const MAX_V_GAP = 200;
 
   // Right-click on a parent→child connector: lets the user type an exact
