@@ -12485,6 +12485,179 @@
     return `M ${x1} ${y1} L ${x1} ${my - sy * rr} Q ${x1} ${my} ${x1 + sx * rr} ${my} L ${x2 - sx * rr} ${my} Q ${x2} ${my} ${x2} ${my + sy * rr} L ${x2} ${y2}`;
   }
 
+  /* ---------------- connector box avoidance ----------------
+     A tree connector must never run through a node box (typically after a
+     manual drag leaves a child tucked under/next to its parent, or another
+     branch sits between the two). connectorPath builds its normal path
+     first; if that path would cross the parent's own box, the child's own
+     box or any other visible node, it tries (1) the same connector with its
+     vertical run moved to other spots in the gap, then (2) leaving the
+     parent's bottom/top edge and entering the child's top/bottom edge.
+     If nothing is clear, the normal path is kept. */
+  function connRect(n, ox, oy, grow) {
+    const l = ox + nodeLeftX(n), t = oy + n._y + (n.oy || 0) - n._h / 2;
+    return { l: l - grow, t: t - grow, r: l + n._w + grow, b: t + n._h + grow };
+  }
+
+  // Liang–Barsky: does segment (ax,ay)-(bx,by) touch rectangle R?
+  function segHitsRect(ax, ay, bx, by, R) {
+    let t0 = 0, t1 = 1;
+    const dx = bx - ax, dy = by - ay;
+    const p = [-dx, dx, -dy, dy];
+    const q = [ax - R.l, R.r - ax, ay - R.t, R.b - ay];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) {
+        if (q[i] < 0) return false;
+      } else {
+        const u = q[i] / p[i];
+        if (p[i] < 0) { if (u > t1) return false; if (u > t0) t0 = u; }
+        else { if (u < t0) return false; if (u < t1) t1 = u; }
+      }
+    }
+    return t0 <= t1;
+  }
+
+  function sampleCubic(x1, y1, c1x, c1y, c2x, c2y, x2, y2) {
+    const pts = [];
+    const N = 24;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, u = 1 - t;
+      pts.push([
+        u * u * u * x1 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x2,
+        u * u * u * y1 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y2
+      ]);
+    }
+    return pts;
+  }
+
+  function connPathBlocked(pts, ox, oy, parent, child) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+    }
+    const hits = (R) => {
+      if (R.r < minX || R.l > maxX || R.b < minY || R.t > maxY) return false;
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (segHitsRect(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], R)) return true;
+      }
+      return false;
+    };
+    // Own boxes: shrunk a little so the endpoints sitting on their edges
+    // don't count, but a path that bulges back into them does.
+    for (const n of [parent, child]) {
+      const R = connRect(n, ox, oy, -2);
+      if (R.r > R.l && R.b > R.t && hits(R)) return true;
+    }
+    const all = virtualAllNodes || [];
+    for (let i = 0; i < all.length; i++) {
+      const n = all[i];
+      if (n === parent || n === child || typeof n._w !== "number" || typeof n._h !== "number") continue;
+      if (hits(connRect(n, ox, oy, 2))) return true;
+    }
+    return false;
+  }
+
+  function elbowThrough(x1, y1, xc, y2, x2, r) {
+    const dy = y2 - y1;
+    if (Math.abs(dy) < 1) return `M ${x1} ${y1} L ${x2} ${y2}`;
+    const rr = Math.min(r, Math.abs(xc - x1), Math.abs(x2 - xc), Math.abs(dy) / 2);
+    const sx = x2 >= x1 ? 1 : -1, sy = dy >= 0 ? 1 : -1;
+    return `M ${x1} ${y1} L ${xc - sx * rr} ${y1} Q ${xc} ${y1} ${xc} ${y1 + sy * rr} L ${xc} ${y2 - sy * rr} Q ${xc} ${y2} ${xc + sx * rr} ${y2} L ${x2} ${y2}`;
+  }
+
+  /* ---------------- sibling connector nesting ----------------
+     Sibling connectors leave the parent at the same point and, with one
+     shared bend position, run their vertical part on top of each other —
+     a thick smeared trunk (very visible with dotted lines). So siblings on
+     the same side and the same vertical direction (above / below the
+     parent) each get their own bend position: the farthest child bends
+     closest to the parent and the nearest bends closest to the children,
+     which nests the lines without crossing. Returns the fraction (0..1) of
+     the parent-to-child gap at which this connector bends; 0.5 = unchanged
+     default (a lone child, or a child level with its parent). */
+  function channelFraction(parent, child, sign) {
+    const kids = parent.children;
+    if (!kids || kids.length < 2) return 0.5;
+    const py = parent._y + (parent.oy || 0);
+    const cdy = child._y + (child.oy || 0) - py;
+    if (Math.abs(cdy) < 1) return 0.5;
+    const px = parent._x + (parent.ox || 0);
+    const group = [];
+    for (const k of kids) {
+      if (k.hidden || typeof k._y !== "number") continue;
+      const kdy = k._y + (k.oy || 0) - py;
+      if (Math.abs(kdy) < 1 || (kdy > 0) !== (cdy > 0)) continue;
+      if (((k._x + (k.ox || 0)) >= px ? 1 : -1) !== sign) continue;
+      group.push(Math.abs(kdy));
+    }
+    const n = group.length;
+    if (n < 2) return 0.5;
+    const mine = Math.abs(cdy);
+    // rank 0 = farthest from the parent's row
+    let rank = 0;
+    for (const d of group) if (d > mine) rank++;
+    return 0.3 + 0.4 * (rank / (n - 1));
+  }
+
+  // Control-point x values for the S-curve bending at fraction f of the gap.
+  // f = 0.5 reproduces the original symmetric curve exactly.
+  function sCurveControls(x1, x2, f) {
+    const dx = x2 - x1;
+    if (f === 0.5) return [x1 + dx * 0.55, x2 - dx * 0.55];
+    const c = x1 + dx * (8 * f - 1) / 6;
+    return [c, c];
+  }
+
+  function avoidBoxes(parent, child, ox, oy, x1, y1, x2, y2, shape, sign, dflt, f) {
+    if (f == null) f = 0.5;
+    if (!virtualAllNodes || !virtualAllNodes.length) return dflt;
+    const isElbow = shape === "elbow";
+    const dx = x2 - x1;
+    const [dc1, dc2] = sCurveControls(x1, x2, f);
+    const defPts = isElbow
+      ? [[x1, y1], [x1 + dx * f, y1], [x1 + dx * f, y2], [x2, y2]]
+      : sampleCubic(x1, y1, dc1, y1, dc2, y2, x2, y2);
+    if (!connPathBlocked(defPts, ox, oy, parent, child)) return dflt;
+
+    // 1) Same side-to-side route, vertical run moved elsewhere in the gap.
+    if (Math.abs(dx) > 30 && sign * dx > 0) {
+      for (const f of [0.25, 0.75, 0.12, 0.88]) {
+        const xc = x1 + dx * f;
+        if (!connPathBlocked([[x1, y1], [xc, y1], [xc, y2], [x2, y2]], ox, oy, parent, child)) {
+          return elbowThrough(x1, y1, xc, y2, x2, 14);
+        }
+      }
+    }
+
+    // 2) Parent's bottom/top edge to the child's top/bottom edge.
+    const P = connRect(parent, ox, oy, 0), C = connRect(child, ox, oy, 0);
+    const down = C.t >= P.b + 4, up = C.b <= P.t - 4;
+    if (down || up) {
+      const ya = down ? P.b : P.t, yb = down ? C.t : C.b;
+      const inset = (v, l, r) => { const m = Math.min(10, (r - l) / 2); return Math.max(l + m, Math.min(r - m, v)); };
+      const oL = Math.max(P.l, C.l), oR = Math.min(P.r, C.r);
+      let xa, xb;
+      if (oR - oL >= 12) { xa = xb = (oL + oR) / 2; }
+      else {
+        xa = inset((C.l + C.r) / 2, P.l, P.r);
+        xb = inset((P.l + P.r) / 2, C.l, C.r);
+      }
+      const dy = yb - ya;
+      let pts, d;
+      if (isElbow) {
+        const my = ya + dy / 2;
+        pts = [[xa, ya], [xa, my], [xb, my], [xb, yb]];
+        d = roundedElbowPathVertical(xa, ya, xb, yb, 14);
+      } else {
+        pts = sampleCubic(xa, ya, xa, ya + dy * 0.55, xb, yb - dy * 0.55, xb, yb);
+        d = `M ${xa} ${ya} C ${xa} ${ya + dy * 0.55}, ${xb} ${yb - dy * 0.55}, ${xb} ${yb}`;
+      }
+      if (!connPathBlocked(pts, ox, oy, parent, child)) return d;
+    }
+    return dflt;
+  }
+
   function connectorPath(parent, child, ox, oy) {
     const px = parent._x + (parent.ox || 0), py = parent._y + (parent.oy || 0);
     const cx = child._x + (child.ox || 0), cy = child._y + (child.oy || 0);
@@ -12504,11 +12677,17 @@
     // wins if set (from the combined "Connector style" picker); otherwise
     // it falls back to the map-wide default from the root node's menu.
     const shape = child.connectorShape || (state.current.theme && state.current.theme.connectorShape) || "curved";
+    const f = channelFraction(parent, child, sign);
+    let dflt;
     if (shape === "elbow") {
-      return roundedElbowPath(x1, y1, x2, y2, 14);
+      dflt = f === 0.5
+        ? roundedElbowPath(x1, y1, x2, y2, 14)
+        : elbowThrough(x1, y1, x1 + (x2 - x1) * f, y2, x2, 14);
+    } else {
+      const [c1, c2] = sCurveControls(x1, x2, f);
+      dflt = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
     }
-    const dx = (x2 - x1) * 0.55;
-    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    return avoidBoxes(parent, child, ox, oy, x1, y1, x2, y2, shape, sign, dflt, f);
   }
 
   // Same idea as connectorPath, but for nodes stacked vertically (the
@@ -12554,7 +12733,7 @@
     // solid box, outlined box, plain text). Level 3+ is dotted, so it gets
     // a noticeably thinner stroke than a solid line of the same "weight"
     // would need, since dots read as thin even at low width.
-    const width = pill ? (depth <= 1 ? 2.6 : 1.8) : (depth <= 1 ? 3 : depth === 2 ? 1.8 : 1.1);
+    const width = pill ? (depth <= 1 ? 1.8 : 1.2) : (depth <= 1 ? 2.2 : depth === 2 ? 1.3 : 0.9);
     const bg = theme.background || defaultBg();
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
