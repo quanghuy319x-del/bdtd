@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=777">
+<link rel="stylesheet" href="style.css?v=778">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@500&display=swap">
@@ -1009,7 +1009,7 @@ if ("serviceWorker" in navigator) {
   // older app shell indefinitely.
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=777", { updateViaCache: "none" });
+      const reg = await navigator.serviceWorker.register("./sw.js?v=778", { updateViaCache: "none" });
       await reg.update();
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       reg.addEventListener("updatefound", () => {
@@ -1112,7 +1112,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=777" onerror="(function(){var k='branchline-app-retry',n=Date.now();try{if(n-Number(sessionStorage.getItem(k)||0)>60000){sessionStorage.setItem(k,String(n));var u=new URL(location.href);u.searchParams.set('branchline_retry',String(n));location.replace(u.href);return;}}catch(_){}window.__branchlineBootError&&window.__branchlineBootError('Could not load app.js. Check your connection or the Pages deployment, then reload.');})()"></script>
+<script src="app.js?v=778" onerror="(function(){var k='branchline-app-retry',n=Date.now();try{if(n-Number(sessionStorage.getItem(k)||0)>60000){sessionStorage.setItem(k,String(n));var u=new URL(location.href);u.searchParams.set('branchline_retry',String(n));location.replace(u.href);return;}}catch(_){}window.__branchlineBootError&&window.__branchlineBootError('Could not load app.js. Check your connection or the Pages deployment, then reload.');})()"></script>
 <script>
 (() => {
   function insertText(editor, text) {

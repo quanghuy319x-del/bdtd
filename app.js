@@ -104,6 +104,49 @@
   // v792: vertical gap between a node's children. A node may carry its own
   // `vGap` (set from the right-click menu, cascaded to all lower levels);
   // otherwise the global SLOT_GAP default applies.
+  // v797: contour (profile) packing. Instead of reserving one tall rectangle per
+  // subtree, every subtree keeps a per-depth outline {top,bot} relative to its own
+  // centre. Siblings are stacked as tightly as those outlines allow, so a tall node
+  // deep in one branch no longer pushes its siblings apart at shallower depths.
+  // Results live in Maps (not on the nodes) so nothing extra is saved to disk.
+  let LAYOUT_PROF = new Map(); // node -> [{top,bot}] per relative depth
+  let LAYOUT_RY = new Map();   // node -> y offset relative to its parent's centre
+  function profileOf(node) {
+    const h = node._h || NODE_H;
+    const self = { top: -h / 2, bot: h / 2 };
+    const list = node.collapsed ? [] : kids(node);
+    let prof;
+    if (!list.length) prof = [self];
+    else prof = [self].concat(packSiblings(list, slotGapOf(node)));
+    LAYOUT_PROF.set(node, prof);
+    return prof;
+  }
+  // Sets LAYOUT_RY for each sibling (centred so first/last midpoint = 0, i.e. the
+  // parent's own y) and returns the group's merged outline in that same frame.
+  function packSiblings(list, gap) {
+    const acc = [];
+    const ys = [];
+    list.forEach((c, i) => {
+      const p = profileOf(c);
+      let y = 0;
+      if (i > 0) {
+        y = -Infinity;
+        const n = Math.min(p.length, acc.length);
+        for (let d = 0; d < n; d++) y = Math.max(y, acc[d].bot + gap - p[d].top);
+      }
+      ys.push(y);
+      p.forEach((e, d) => {
+        const t = y + e.top, b = y + e.bot;
+        if (!acc[d]) acc[d] = { top: t, bot: b };
+        else { acc[d].top = Math.min(acc[d].top, t); acc[d].bot = Math.max(acc[d].bot, b); }
+      });
+    });
+    const mid = (ys[0] + ys[ys.length - 1]) / 2;
+    list.forEach((c, i) => LAYOUT_RY.set(c, ys[i] - mid));
+    return acc.map(e => ({ top: e.top - mid, bot: e.bot - mid }));
+  }
+  function resetLayoutCaches() { LAYOUT_PROF = new Map(); LAYOUT_RY = new Map(); }
+
   // v796: shift a node and everything under it vertically.
   function shiftSubtreeY(n, dy) {
     n._y += dy;
@@ -150,6 +193,7 @@
   }
 
   function layout(root) {
+    resetLayoutCaches();
     const mode = (state.current && state.current.layout) || "mindmap";
     if (mode === "logic" || mode === "righty") layoutMindmap(root, false);
     else if (mode === "timeline") layoutTimeline(root);
@@ -336,43 +380,24 @@
         node._y = y;
         return;
       }
-      let total = 0;
-      kids(node).forEach((c, i) => {
-        total += c._subtreeH;
-        if (i > 0) total += slotGapOf(node);
-      });
-      let cursor = y - total / 2;
+      // v797: node sits at `y`; children use their packed offsets (see packSiblings).
+      node._y = y;
       kids(node).forEach(c => {
-        const center = cursor + c._subtreeH / 2;
-        place(c, depth + 1, nodeSign, center, offset + node._w);
-        cursor += c._subtreeH + slotGapOf(node);
+        place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + node._w);
       });
-      // center parent over its children
-      const first = kids(node)[0]._y;
-      const last = kids(node)[kids(node).length - 1]._y;
-      node._y = (first + last) / 2;
     }
 
     function layoutSide(list, sign) {
       if (list.length === 0) return;
       list.forEach(n => measureTree(n, 1));
       list.forEach(n => subtreeExtent(n));
-      let total = 0;
-      list.forEach((n, i) => {
-        total += n._subtreeH;
-        if (i > 0) total += slotGapOf(root);
-      });
-      let cursor = -total / 2;
+      // v797: contour-pack the top-level branches (centred on the root's y = 0).
+      packSiblings(list, slotGapOf(root));
       list.forEach(n => {
-        const center = cursor + n._subtreeH / 2;
-        // The root is centered on the spine (not anchored like everything
-        // past it), so its "outer edge" toward this fan direction is half
-        // its own width, not 0 — otherwise a wide root would suffer the
-        // same too-close-to-its-child overlap that wide non-root nodes do.
-        place(n, 1, sign, center, root._w / 2);
-        cursor += n._subtreeH + slotGapOf(root);
+        // The root is centered on the spine, so its outer edge toward this fan
+        // direction is half its own width, not 0.
+        place(n, 1, sign, LAYOUT_RY.get(n) || 0, root._w / 2);
       });
-      alignSiblingsToParent(list);
     }
 
     layoutSide(right, 1);
@@ -498,20 +523,11 @@
           node._y = y;
           return;
         }
-        let total = 0;
-        kids(node).forEach((c, i) => {
-          total += c._subtreeH;
-          if (i > 0) total += slotGapOf(node);
-        });
-        let cursor = y - total / 2;
+        // v797: node sits at `y`; children use their packed offsets.
+        node._y = y;
         kids(node).forEach(c => {
-          const center = cursor + c._subtreeH / 2;
-          place(c, nodeSign, center, offset + node._w);
-          cursor += c._subtreeH + slotGapOf(node);
+          place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + node._w);
         });
-        const first = kids(node)[0]._y;
-        const last = kids(node)[kids(node).length - 1]._y;
-        node._y = (first + last) / 2;
       }
 
       // Lays out one side's subtree(s) stacked top-to-bottom and centered
@@ -522,24 +538,13 @@
       function layoutSide(list, sign) {
         if (list.length === 0) return 0;
         list.forEach(n => subtreeExtent(n));
-        let total = 0;
-        list.forEach((n, i) => {
-          total += n._subtreeH;
-          if (i > 0) total += slotGapOf(branch);
-        });
-        let cursor = -total / 2;
+        // v797: contour-pack this branch's children around the branch's own y = 0.
+        packSiblings(list, slotGapOf(branch));
         list.forEach(n => {
-          const center = cursor + n._subtreeH / 2;
-          // The branch itself sits centered on the spine (branch._x === 0,
-          // same treatment as the root), so its outer edge toward this fan
-          // direction is half its own width, not 0.
-          place(n, sign, center, branch._w / 2);
-          cursor += n._subtreeH + slotGapOf(branch);
+          // The branch sits centered on the spine (branch._x === 0), so its outer
+          // edge toward this fan direction is half its own width, not 0.
+          place(n, sign, LAYOUT_RY.get(n) || 0, branch._w / 2);
         });
-        // v796: put the branch's children on the branch's own centre line, then
-        // measure the real vertical extent (symmetric about y=0, since the row
-        // is centred on the branch) so neighbouring rows still can't collide.
-        alignSiblingsToParent(list);
         let ext = 0;
         (function walk(n) {
           ext = Math.max(ext, Math.abs(n._y) + (n._h || NODE_H) / 2);
