@@ -15265,7 +15265,15 @@
         const items = e.clipboardData && e.clipboardData.items;
         if (!items) return;
         const imageItem = Array.from(items).find(i => i.type && i.type.startsWith("image/"));
-        if (!imageItem) return;
+        if (!imageItem) {
+          // Multi-line indented text -> a tree of child nodes under this node.
+          const outline = parseIndentedOutline(e.clipboardData.getData("text/plain"));
+          if (!outline) return;
+          e.preventDefault();
+          commitEdit(div, { render: false });
+          pasteOutlineUnderNode(node.id, outline);
+          return;
+        }
         const file = imageItem.getAsFile();
         if (!file) return;
         e.preventDefault();
@@ -20264,6 +20272,64 @@
     fetchCellLinkTitle(nodeId, r, c, url);
   }
 
+
+  // ---- Paste indented text as a node tree ----
+  // Recognizes plain text where each line is a node and indentation (tabs
+  // or spaces) shows the hierarchy, e.g.
+  //   Technical analysis
+  //   <tab>Trend Continuation
+  //   <tab><tab>FT0 - C2
+  // Bullet markers (-, *, •) are stripped; blank lines are ignored.
+  function parseIndentedOutline(text) {
+    if (typeof text !== "string") return null;
+    const rows = [];
+    text.replace(/\r\n?/g, "\n").split("\n").forEach(raw => {
+      if (!raw.trim()) return;
+      const lead = raw.match(/^[ \t\u00A0]*/)[0];
+      let width = 0;
+      for (const ch of lead) width += ch === "\t" ? 4 : 1;
+      const label = raw.slice(lead.length).replace(/^[-*•–·▪◦]\s+/, "").trim();
+      if (label) rows.push({ width, text: label });
+    });
+    if (rows.length < 2 || rows.length > 3000) return null;
+    const top = [];
+    const stack = []; // { width, item }
+    rows.forEach(r => {
+      while (stack.length && stack[stack.length - 1].width >= r.width) stack.pop();
+      const item = { text: r.text, children: [] };
+      (stack.length ? stack[stack.length - 1].item.children : top).push(item);
+      stack.push({ width: r.width, item });
+    });
+    return { top, count: rows.length };
+  }
+
+  function pasteOutlineUnderNode(parentId, outline) {
+    if (!requireSignIn()) return false;
+    const parent = findNode(parentId);
+    if (!parent || !outline) return false;
+    pushUndo(); // one undo step for the whole paste
+    const build = (par, item) => {
+      const n = newNode(item.text);
+      if (typeof par.vGap === "number" && par.vGap >= 0) n.vGap = par.vGap;
+      if (typeof par.childrenGap === "number" && par.childrenGap >= 0) {
+        n.xGap = par.childrenGap;
+        n.childrenGap = par.childrenGap;
+      }
+      n.fontColor = par.fontColor || null;
+      par.children.push(n);
+      item.children.forEach(c => build(n, c));
+    };
+    outline.top.forEach(item => build(parent, item));
+    parent.collapsed = false;
+    state.selectedId = parent.id;
+    state.selectedCell = null;
+    state.editingId = null;
+    renderAll();
+    persist();
+    showToast("Pasted " + outline.count + " nodes");
+    return true;
+  }
+
   // Paste a screenshot (or any copied image) straight onto the selected
   // node — or, if a table cell was last clicked (see state.selectedCell/
   // handleCellPhotoFiles), onto that cell instead — as a new photo, no
@@ -20287,6 +20353,14 @@
     const imageItem = Array.from(items).find(i => i.type && i.type.startsWith("image/"));
     const file = imageItem && imageItem.getAsFile();
     const url = !file ? pasteableUrlFromClipboard(e.clipboardData) : null;
+    if (!file && !url && !state.selectedCell && !state.editingId) {
+      const outline = parseIndentedOutline(e.clipboardData.getData("text/plain"));
+      if (outline) {
+        e.preventDefault();
+        pasteOutlineUnderNode(state.selectedId || state.current.root.id, outline);
+        return;
+      }
+    }
     if (!file && !url) return;
     if (state.selectedCell) {
       e.preventDefault();
