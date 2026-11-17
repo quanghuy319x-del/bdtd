@@ -118,6 +118,20 @@
   // anchor edge) so packSiblings can keep a wide node from running into a
   // neighbour's children. Timeline keeps the old aligned columns (flag off).
   let LAYOUT_TIGHT = false;
+  // v806: with Elbow connectors, siblings share ONE vertical trunk, so they must all
+  // start the same distance from their parent. A leftover custom gap on a single
+  // child (set by dragging/right-clicking its connector) used to push it closer or
+  // further and draw a second, parallel trunk. Use the most common gap in the group
+  // (ties -> the larger one) for every sibling. Returns null when not Elbow.
+  function sharedGapFor(list) {
+    const isElbow = state.current && state.current.theme && state.current.theme.connectorShape === "elbow";
+    if (!isElbow || !list || list.length < 2) return null;
+    const counts = new Map();
+    list.forEach(c => { const g = gapFor(c); counts.set(g, (counts.get(g) || 0) + 1); });
+    let best = null, bestN = 0;
+    counts.forEach((n, g) => { if (n > bestN || (n === bestN && g > best)) { best = g; bestN = n; } });
+    return best;
+  }
   const TIGHT_PAD_X = 8; // horizontal clearance required between boxes
   function profileOf(node) {
     const h = node._h || NODE_H;
@@ -126,7 +140,7 @@
     const list = node.collapsed ? [] : kids(node);
     let prof;
     if (!list.length) prof = [self];
-    else prof = [self].concat(packSiblings(list, slotGapOf(node), c => w + gapFor(c)));
+    else { const sg = sharedGapFor(list); prof = [self].concat(packSiblings(list, slotGapOf(node), c => w + (sg != null ? sg : gapFor(c)))); }
     LAYOUT_PROF.set(node, prof);
     return prof;
   }
@@ -372,7 +386,7 @@
     // whole subtree by the caller. Children are stacked and centered
     // entirely within that local slot, so a node's own layout never
     // depends on, or disturbs, anything outside its own subtree.
-    function place(node, depth, sign, y, parentOffset, sibW) {
+    function place(node, depth, sign, y, parentOffset, sibW, groupGap) {
       // A node normally just inherits the direction its ancestor branch is
       // already fanning (the `sign` handed down from the caller). But if
       // this particular node has its own explicit left/right override
@@ -403,7 +417,7 @@
       // node (see gapFor) still shifts it and everything past it without
       // disturbing anything closer in; it's just measured from the actual
       // rendered edge now instead of a flat distance from the root.
-      const offset = parentOffset + gapFor(node);
+      const offset = parentOffset + (groupGap != null ? groupGap : gapFor(node));
       node._x = nodeSign * offset;
       if (node.collapsed || kids(node).length === 0) {
         node._y = y;
@@ -418,8 +432,9 @@
       // not after the widest sibling; packSiblings keeps neighbours from colliding.
       const colW = node._w || 0;
       const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
+      const sgKids = sharedGapFor(kids(node));
       kids(node).forEach(c => {
-        place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
+        place(c, depth + 1, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW, sgKids);
       });
     }
 
@@ -428,12 +443,13 @@
       list.forEach(n => measureTree(n, 1));
       list.forEach(n => subtreeExtent(n));
       // v797: contour-pack the top-level branches (centred on the root's y = 0).
-      packSiblings(list, slotGapOf(root), c => root._w / 2 + gapFor(c));
+      const sgTop = sharedGapFor(list);
+      packSiblings(list, slotGapOf(root), c => root._w / 2 + (sgTop != null ? sgTop : gapFor(c)));
       const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
       list.forEach(n => {
         // The root is centered on the spine, so its outer edge toward this fan
         // direction is half its own width, not 0.
-        place(n, 1, sign, LAYOUT_RY.get(n) || 0, root._w / 2, listW);
+        place(n, 1, sign, LAYOUT_RY.get(n) || 0, root._w / 2, listW, sgTop);
       });
     }
 
@@ -547,14 +563,14 @@
       // `y` is the vertical center of the slot already reserved for this
       // node's whole subtree, so its children only ever need to fit inside
       // that local slot.
-      function place(node, curSign, y, parentOffset, sibW) {
+      function place(node, curSign, y, parentOffset, sibW, groupGap) {
         // v559: Timeline's vertical spine defines branch direction. A direct
         // child of a spine branch (level 2) may live on either side, but once
         // it is on the right every deeper descendant keeps fanning right;
         // once it is on the left every deeper descendant keeps fanning left.
         // Deeper node.side overrides are intentionally ignored.
         const nodeSign = curSign;
-        const offset = parentOffset + gapFor(node);
+        const offset = parentOffset + (groupGap != null ? groupGap : gapFor(node));
         node._x = nodeSign * offset;
         if (node.collapsed || kids(node).length === 0) {
           node._y = y;
@@ -565,8 +581,9 @@
         // v801: tight columns — children start right after THIS node's box.
         const colW = node._w || 0;
         const kidW = kids(node).reduce((m, c) => Math.max(m, c._w || 0), 0);
+        const sgKidsT = sharedGapFor(kids(node));
         kids(node).forEach(c => {
-          place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW);
+          place(c, nodeSign, y + (LAYOUT_RY.get(c) || 0), offset + colW, kidW, sgKidsT);
         });
       }
 
@@ -579,12 +596,13 @@
         if (list.length === 0) return 0;
         list.forEach(n => subtreeExtent(n));
         // v797: contour-pack this branch's children around the branch's own y = 0.
-        packSiblings(list, slotGapOf(branch), c => branch._w / 2 + gapFor(c));
+        const sgTl = sharedGapFor(list);
+        packSiblings(list, slotGapOf(branch), c => branch._w / 2 + (sgTl != null ? sgTl : gapFor(c)));
         const listW = list.reduce((m, c) => Math.max(m, c._w || 0), 0);
         list.forEach(n => {
           // The branch sits centered on the spine (branch._x === 0), so its outer
           // edge toward this fan direction is half its own width, not 0.
-          place(n, sign, LAYOUT_RY.get(n) || 0, branch._w / 2, listW);
+          place(n, sign, LAYOUT_RY.get(n) || 0, branch._w / 2, listW, sgTl);
         });
         let ext = 0;
         (function walk(n) {
@@ -12545,16 +12563,18 @@
   // parent, a rounded corner, a vertical run, another rounded corner, then
   // a horizontal run into the child — the classic org-chart look. Falls
   // back to a plain straight segment if there isn't room for the bend.
-  function roundedElbowPath(x1, y1, x2, y2, r) {
+  function roundedElbowPath(x1, y1, x2, y2, r, trunkX) {
     const dx = x2 - x1, dy = y2 - y1;
     if (Math.abs(dx) < 1 || Math.abs(dy) < 1) {
       return `M ${x1} ${y1} L ${x2} ${y2}`;
     }
-    const mx = x1 + dx / 2;
+    // v806: siblings share ONE vertical trunk (trunkX) even if their boxes start at
+    // slightly different distances; default is the midpoint of this hop.
+    const mx = (typeof trunkX === "number" && Math.abs(trunkX - x1) < Math.abs(dx)) ? trunkX : x1 + dx / 2;
     // Org-chart look: the stub meets the shared trunk at a sharp T-junction
     // (so sibling lines overlap cleanly on the trunk) and only the turn into
     // each child is rounded.
-    const rr = Math.min(r, Math.abs(dx) / 2, Math.abs(dy));
+    const rr = Math.min(r, Math.abs(x2 - mx), Math.abs(dy));
     const sx = dx >= 0 ? 1 : -1;
     const sy = dy >= 0 ? 1 : -1;
     return `M ${x1} ${y1} L ${mx} ${y1} L ${mx} ${y2 - sy * rr} Q ${mx} ${y2} ${mx + sx * rr} ${y2} L ${x2} ${y2}`;
@@ -12698,6 +12718,23 @@
     return dflt;
   }
 
+  // v806: one shared vertical trunk per parent (and side). Siblings whose boxes
+  // start at different distances (custom gap, manual drag, icons...) used to each
+  // get their own midpoint, drawing parallel vertical lines. The trunk sits at the
+  // midpoint of the SHORTEST hop, so every sibling still has room for its own stub.
+  function sharedElbowTrunkX(parent, ox, sign, x1) {
+    let minD = Infinity;
+    (parent.children || []).forEach((c) => {
+      if (c.hidden || typeof c._x !== "number") return;
+      const csign = (c._x + (c.ox || 0)) >= (parent._x + (parent.ox || 0)) ? 1 : -1;
+      if (csign !== sign) return;
+      const cx2 = ox + (sign > 0 ? nodeLeftX(c) : nodeRightX(c));
+      const d = Math.abs(cx2 - x1);
+      if (d >= 1 && d < minD) minD = d;
+    });
+    return isFinite(minD) ? x1 + sign * minD / 2 : undefined;
+  }
+
   function connectorPath(parent, child, ox, oy) {
     const px = parent._x + (parent.ox || 0), py = parent._y + (parent.oy || 0);
     const cx = child._x + (child.ox || 0), cy = child._y + (child.oy || 0);
@@ -12718,7 +12755,7 @@
     // it falls back to the map-wide default from the root node's menu.
     const shape = hopShape(parent, child); // one shape per parent
     const dflt = shape === "elbow"
-      ? roundedElbowPath(x1, y1, x2, y2, 10)
+      ? roundedElbowPath(x1, y1, x2, y2, 10, sharedElbowTrunkX(parent, ox, sign, x1))
       : (() => { const dx = (x2 - x1) * 0.55; return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`; })();
     return avoidBoxes(parent, child, ox, oy, x1, y1, x2, y2, shape, sign, dflt);
   }
