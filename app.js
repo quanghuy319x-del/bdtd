@@ -1208,6 +1208,27 @@
     map.theme = Object.assign(defaultTheme(), map.theme || {});
   }
 
+  // One connector shape per parent node: every connector leaving the same
+  // node is drawn in the same shape, so a node never fans out part curved,
+  // part elbow. Individual hops can still carry their own connectorShape
+  // (set from a connector's right-click menu), so the shape used for the
+  // whole group is whichever one most of the visible children resolve to
+  // (a tie goes to the map-wide default).
+  function hopShape(parent, child) {
+    const def = (state.current && state.current.theme && state.current.theme.connectorShape) || "curved";
+    const sibs = parent && parent.children;
+    if (!sibs || sibs.length < 2) return (child && child.connectorShape) || def;
+    const counts = {};
+    for (const c of sibs) {
+      if (c.hidden) continue;
+      const s = c.connectorShape || def;
+      counts[s] = (counts[s] || 0) + 1;
+    }
+    let best = def, bestN = counts[def] || 0;
+    for (const k in counts) if (counts[k] > bestN) { best = k; bestN = counts[k]; }
+    return best;
+  }
+
   /* ---------------- Mindomo theme (internal id: "pill") ----------------
      Colored rounded "pill" fills on the root and first-level nodes, larger
      type on the higher levels, plain black text, solid (never dotted)
@@ -12639,7 +12660,7 @@
     // falls back to the default S-curve below. A hop's own connectorShape
     // wins if set (from the combined "Connector style" picker); otherwise
     // it falls back to the map-wide default from the root node's menu.
-    const shape = child.connectorShape || (state.current.theme && state.current.theme.connectorShape) || "curved";
+    const shape = hopShape(parent, child); // one shape per parent
     const dflt = shape === "elbow"
       ? roundedElbowPath(x1, y1, x2, y2, 10)
       : (() => { const dx = (x2 - x1) * 0.55; return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`; })();
@@ -12686,7 +12707,7 @@
     // Elbow connectors (any theme) get the same clean treatment as the
     // Mindomo style — solid, no halo/glow, fully opaque — so siblings
     // sharing one vertical trunk overlap exactly and read as a single line.
-    const elbowShape = child.connectorShape || (theme && theme.connectorShape) || "curved";
+    const elbowShape = hopShape(parent, child);
     const clean = pill || (orientation !== "v" && elbowShape === "elbow");
     const depth = opts.depth != null ? opts.depth : child._depth;
     // Thickness steps down by level so the trunk clearly reads as more
@@ -17560,8 +17581,8 @@
           ensureTheme(state.current);
           const values = node.children.map((c) => {
             if (c.connectorStyle === "arrow") return "arrow";
-            if (c.connectorStyle === "line") return c.connectorShape || state.current.theme.connectorShape || "curved";
-            return state.current.theme.connectorArrow ? "arrow" : (c.connectorShape || state.current.theme.connectorShape || "curved");
+            if (c.connectorStyle === "line") return hopShape(node, c);
+            return state.current.theme.connectorArrow ? "arrow" : hopShape(node, c);
           });
           return values.every(v => v === values[0]) ? values[0] : null;
         },
@@ -17860,15 +17881,17 @@
       () => {
         ensureTheme(state.current);
         if (child.connectorStyle === "arrow") return "arrow";
-        if (child.connectorStyle === "line") return child.connectorShape || state.current.theme.connectorShape || "curved";
-        return state.current.theme.connectorArrow ? "arrow" : (child.connectorShape || state.current.theme.connectorShape || "curved");
+        if (child.connectorStyle === "line") return hopShape(parent, child);
+        return state.current.theme.connectorArrow ? "arrow" : hopShape(parent, child);
       },
       (val) => {
         if (val === "arrow") {
           child.connectorStyle = "arrow";
         } else {
           child.connectorStyle = "line";
-          child.connectorShape = val;
+          // One shape per parent: apply the choice to every sibling's
+          // routing too (their arrow/line setting is left alone).
+          (parent.children || []).forEach((c) => { c.connectorShape = val; });
         }
       }
     );
