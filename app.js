@@ -797,7 +797,7 @@
     // left edge of the box, so reserve CHECKBOX_W extra px of horizontal room.
     const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
     const padX = (depth === 0 ? 56 : 32) + cbExtra;
-    const vPad = depth === 0 ? 28 : 16;
+    const vPad = depth === 0 ? 28 : 10; // v793: was 16 (matches .node:not(.depth-0) padding 3px + 2px border)
     const baseH = depth === 0 ? ROOT_H : NODE_H;
     const minW = (depth === 0 ? 130 : 56) + cbExtra;
 
@@ -1044,7 +1044,7 @@
     "#756BD1", "#E86BB8", "#F2C94C", "#5DBB63", "#C46DD1"
   ];
 
-  const NODE_H = 40;
+  const NODE_H = 28; // v793: was 40 (compact rows; tighter vertical gaps)
   const ROOT_H = 64;
   // These now represent the actual visual gap between a node's rendered
   // right edge and its child's left edge (place() adds the parent's real
