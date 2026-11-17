@@ -925,14 +925,15 @@
       h = Math.max(tbox.tableH + vPad + 6, baseH);
       lines = [];
     } else {
-    const baseFontWeight = isPillTheme()
+    const auto = autoLevelFormat(node, depth);
+    const baseFontWeight = auto.weight || (isPillTheme()
       ? (depth === 0 ? 700 : depth === 1 ? 500 : 400)
-      : (depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400);
-    const fontWeight = node.bold ? (depth === 0 ? 900 : 800) : baseFontWeight;
+      : (depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400));
+    const fontWeight = (node.bold || auto.bold) ? (depth === 0 ? 900 : 800) : baseFontWeight;
     const fontSize = nodeFontSizeFor(depth);
-    measureCtx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
+    measureCtx.font = `${auto.italic ? "italic " : ""}${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const rawText = node.text || "(untitled)";
-    const text = node.allCaps ? rawText.toUpperCase() : rawText;
+    const text = (node.allCaps || auto.caps) ? rawText.toUpperCase() : auto.titleCase ? applyTitleCase(rawText) : rawText;
     // Small safety buffer so a slight mismatch between canvas-measured width
     // and actual rendered width never causes the CSS wrap to break a word
     // mid-letter (e.g. "Risk" -> "Ris"/"k").
@@ -1327,6 +1328,26 @@
   function nodeFontSizeFor(depth) {
     if (isPillTheme()) return depth === 0 ? 30 : depth === 1 ? 17 : depth === 2 ? 14.5 : 13.5;
     return depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
+  }
+
+  // Auto-format by level (level = depth; level 1 = a direct child of the root).
+  //   level 1  -> bold + ALL CAPS
+  //   level 2  -> Title Case ("Aa": first letter of each word capitalised)
+  //   level 3  -> medium weight (500)
+  //   level 4+ -> regular weight (400) + italic
+  // Display-only: node.text is never rewritten, so moving a node to another
+  // level re-styles it automatically. The manual Bold / AA buttons still add
+  // on top of this. Edit this one function to change the scheme.
+  function autoLevelFormat(node, depth) {
+    if (node && nodeIsTable(node)) return {};
+    if (depth === 1) return { bold: true, caps: true };
+    if (depth === 2) return { titleCase: true };
+    if (depth === 3) return { weight: 500 };
+    if (depth >= 4) return { weight: 400, italic: true };
+    return {};
+  }
+  function applyTitleCase(s) {
+    return s.replace(/(^|[\s\-\u2013\u2014\/(\[{"\u201C\u2018])(\p{L})/gu, (_, pre, ch) => pre + ch.toUpperCase());
   }
 
   // Default distance for the hop from a node's parent to the node itself,
@@ -15241,8 +15262,10 @@
       ? color
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
-    div.style.fontWeight = node.bold ? (depth === 0 ? "900" : "800") : "";
-    div.style.textTransform = node.allCaps ? "uppercase" : "";
+    const autoFmt = autoLevelFormat(node, depth);
+    div.style.fontWeight = (node.bold || autoFmt.bold) ? (depth === 0 ? "900" : "800") : (autoFmt.weight ? String(autoFmt.weight) : "");
+    div.style.fontStyle = autoFmt.italic ? "italic" : "";
+    div.style.textTransform = (node.allCaps || autoFmt.caps) ? "uppercase" : autoFmt.titleCase ? "capitalize" : "";
 
     // The root node's title used to scroll like a marquee when it ran
     // long, rather than wrapping/clipping — removed at the user's
