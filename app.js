@@ -15136,7 +15136,7 @@
     // existed — treat that the same as "soft" instead of producing a
     // dead "glow-true" class that matches no CSS rule.
     const glowVariant = node.glow === true ? "soft" : node.glow;
-    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "") + (isPillTheme() ? " pill-theme" : "") + (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) ? " has-inline-strip" : "");
+    div.className = `node depth-${Math.min(depth, 3)}` + (node.id === state.selectedId ? " selected" : "") + (node.struck ? " struck" : "") + (node.checkbox && node.checked && !nodeIsTable(node) ? " node-checked" : "") + (glowVariant ? ` glow-${glowVariant}` : "") + (isPillTheme() ? " pill-theme" : "") + (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) ? " has-inline-strip" : "") + (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) && node._x < 0 && state.current.layout === "timeline" ? " inline-strip-left" : "");
     div.dataset.id = node.id;
     div.style.left = (ox + nodeLeftX(node)) + "px";
     div.style.top = (oy + node._y + (node.oy || 0) - h / 2) + "px";
@@ -15240,7 +15240,9 @@
     // v804: while editing, the icon strip is hidden but its room stays reserved
     // on the right so the text does not re-wrap.
     if (depth !== 0 && node._inlineStripW > 0 && !nodeIsTable(node) && node.id === state.editingId) {
-      div.style.paddingRight = (8 + node._inlineStripW + 6) + "px";
+      // v805: icons lead the text on left-side Timeline nodes, so reserve the room on the left there.
+      if (node._x < 0 && state.current.layout === "timeline") div.style.paddingLeft = (8 + node._inlineStripW + 6) + "px";
+      else div.style.paddingRight = (8 + node._inlineStripW + 6) + "px";
     }
 
     // Optional checkbox (right-click menu -> "Add checkbox"). Drawn purely in

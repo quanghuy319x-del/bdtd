@@ -11953,3 +11953,9 @@ body.signed-out #mindmap-list{display:none!important}
 .node-photo-strip.large.inline .node-timer-badge{
   width: 34px; min-width: 34px;
 }
+
+/* v805: Timeline nodes on the LEFT side of the spine show their icons before the text. */
+.node.inline-strip-left .node-photo-strip.large.inline{
+  order: -1;
+  margin: 0 6px 0 0;
+}
