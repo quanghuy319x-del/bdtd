@@ -90,6 +90,7 @@
       getNodeTimePlayed,
       brainstormPoints,
       stripBucketCount,
+      noteBucketCount,
       nodeTaskProgress,
       isClockHidden
     } = deps;
@@ -910,7 +911,7 @@
     // keep the old below-the-text strip.
     const eImages = getNodeImages(node);
     const eIconCount =
-      stripBucketCount(getNodeNotes(node).length)
+      noteBucketCount(getNodeNotes(node))
       + stripBucketCount(getNodeUrls(node).length)
       + nodeTaskNoteMarkerCount(node)
       + (nodeAffirmationWins(node) ? 1 : 0)
@@ -981,7 +982,7 @@
     // STRIP_OVERFLOW_CAP too (see stripBucketCount/renderNode), so the
     // box reserves exactly as much room as actually gets drawn either way.
     const stripIconCountForBox =
-      stripBucketCount(getNodeNotes(node).length)
+      noteBucketCount(getNodeNotes(node))
       + stripBucketCount(getNodeUrls(node).length)
       + nodeTaskNoteMarkerCount(node)
       + nodeSubtaskBrainstormMarkerCount(node)
@@ -10024,6 +10025,17 @@
   function stripBucketCount(len) {
     return len > STRIP_OVERFLOW_CAP ? 1 : len;
   }
+  // v806: node notes collapse per KIND, never across kinds — a Brainstorm,
+  // DRC, Plan and an ordinary note are four different icons, so a Brainstorm
+  // note plus a regular note stays two icons instead of "brain x2".
+  function noteKindKey(n) {
+    return isBrainstormNote(n) ? "brainstorm" : (isDRCNote(n) ? "drc" : (isPlanNote(n) ? "plan" : "note"));
+  }
+  function noteBucketCount(notes) {
+    const counts = {};
+    (notes || []).forEach((n) => { const k = noteKindKey(n); counts[k] = (counts[k] || 0) + 1; });
+    return Object.keys(counts).reduce((sum, k) => sum + stripBucketCount(counts[k]), 0);
+  }
 
   // Bare host/paths ("example.com") still work as a link this way — without
   // a scheme, clicking would otherwise try to load it as a path relative to
@@ -15559,7 +15571,7 @@
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
     const stripIconCount =
-      stripBucketCount(nodeNotes.length)
+      noteBucketCount(nodeNotes)
       + stripBucketCount(nodeUrls.length)
       + stripBucketCount(tasksWithNotes.length)
       + stripBucketCount(subtasksWithNotes.length)
@@ -15630,8 +15642,16 @@
       // as photos: a single note icon carrying a count badge stands in
       // for the lot, and click/right-click both open the full list
       // (openNoteManageMenu) instead of one specific note.
-      const notesOverflow = nodeNotes.length > STRIP_OVERFLOW_CAP;
-      (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n) => {
+      const noteGroups = [];
+      const noteGroupByKind = {};
+      nodeNotes.forEach((n) => {
+        const k = noteKindKey(n);
+        if (!noteGroupByKind[k]) { noteGroupByKind[k] = []; noteGroups.push(noteGroupByKind[k]); }
+        noteGroupByKind[k].push(n);
+      });
+      noteGroups.forEach((grp) => {
+      const notesOverflow = grp.length > STRIP_OVERFLOW_CAP;
+      (notesOverflow ? grp.slice(0, 1) : grp).forEach((n) => {
         // Keep original indices when title-only draft notes are filtered.
         const i = allNodeNotes.indexOf(n);
         const noteIcon = document.createElement("span");
@@ -15643,13 +15663,13 @@
         noteIcon.draggable = true;
         noteIcon.addEventListener("dragend", endMarkerDrag);
         if (notesOverflow) {
-          noteIcon.title = `${nodeNotes.length} notes — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
+          noteIcon.title = `${grp.length} notes — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes"));
           armMarkerTouchDrag(noteIcon, node, "notes");
           noteIcon.addEventListener("click", (e) => { e.stopPropagation(); openNoteManageMenu(node.id, e.clientX, e.clientY); });
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
-          badge.textContent = String(nodeNotes.length);
+          badge.textContent = String(grp.length);
           noteIcon.appendChild(badge);
         } else {
           // DRC notes get a status-aware tooltip (filled-in or not)
@@ -15672,6 +15692,7 @@
           openNoteManageMenu(node.id, e.clientX, e.clientY);
         });
         strip.appendChild(noteIcon);
+      });
       });
 
       // Same note icon again, one per task that has notes on it — click
@@ -35857,6 +35878,7 @@ function closeSubtaskFocusMode() {
     getNodeTimePlayed,
     brainstormPoints,
     stripBucketCount,
+    noteBucketCount,
     nodeTaskProgress,
     isClockHidden
   });
