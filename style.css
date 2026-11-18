@@ -1310,6 +1310,7 @@ body.signed-out #title-input{ visibility:hidden; }
   padding-right: 32px;
 }
 .node-table-cell-icon{
+  position: relative; /* v809: count badges anchor to THEIR icon, not the strip */
   width: 10px;
   height: 10px;
   flex: 0 0 auto;
@@ -11978,3 +11979,21 @@ body.signed-out #mindmap-list{display:none!important}
   padding-top: 7px !important;
   padding-right: 7px !important;
 }
+
+
+/* v808: Brainstorm is a single node-scoped marker — it never carries a count badge. */
+.node-brainstorm-marker > .node-marker-count,
+.node-table-cell-brainstorm > .node-marker-count{ display:none !important; }
+
+/* v808: badges stay on the icon's corner with a small, uniform protrusion so no
+   tile/cell/strip edge trims them, and the digit always has room. */
+.node-marker-count{ box-sizing:border-box; overflow:visible; z-index:8; }
+.node-photo-thumb > .node-marker-count{ right:-3px; top:-3px; }
+#calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+  right:-4px !important; top:-4px !important;
+}
+#calendar-modal #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count,
+#calendar-modal #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+  right:-2px !important; top:-3px !important;
+}
+#calendar-modal .calendar-summary-icon-strip{ padding-top: 8px !important; padding-right: 8px !important; }

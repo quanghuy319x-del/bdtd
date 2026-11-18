@@ -14661,7 +14661,7 @@
       groups.get(key).push(el);
     });
     groups.forEach((members, key) => {
-      if (members.length < 2) return;
+      if (members.length < 2 || key === "k:brainstorm") return;
       const brandKey = key.startsWith("link:") ? key.slice(5) : "";
       const label = key.startsWith("link:")
         ? ((LINK_BRAND_LABELS[brandKey] ? LINK_BRAND_LABELS[brandKey] + " " : "") + "links")
@@ -15701,8 +15701,10 @@
         noteGroupByKind[k].push(n);
       });
       noteGroups.forEach((grp) => {
-      const notesOverflow = grp.length > STRIP_OVERFLOW_CAP;
-      (notesOverflow ? grp.slice(0, 1) : grp).forEach((n) => {
+      // v808: Brainstorm is node-scoped (one marker) — never badged, never counted.
+      const grpIsBrainstorm = isBrainstormNote(grp[0]);
+      const notesOverflow = !grpIsBrainstorm && grp.length > STRIP_OVERFLOW_CAP;
+      ((notesOverflow || grpIsBrainstorm) ? grp.slice(0, 1) : grp).forEach((n) => {
         // Keep original indices when title-only draft notes are filtered.
         const i = allNodeNotes.indexOf(n);
         const noteIcon = document.createElement("span");
