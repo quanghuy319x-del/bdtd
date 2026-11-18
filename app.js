@@ -943,7 +943,7 @@
     const baseFontWeight = auto.weight || (isPillTheme()
       ? (depth === 0 ? 700 : depth === 1 ? 500 : 400)
       : (depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400));
-    const fontWeight = (node.bold || auto.bold) ? (depth === 0 ? 900 : 800) : baseFontWeight;
+    const fontWeight = ((node.bold && !auto.noBold) || auto.bold) ? (depth === 0 ? 900 : 800) : baseFontWeight;
     const fontSize = nodeFontSizeFor(depth);
     measureCtx.font = `${auto.italic ? "italic " : ""}${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const rawText = node.text || "(untitled)";
@@ -1349,7 +1349,7 @@
   }
 
   // Auto-format by level (level = depth; level 1 = a direct child of the root).
-  //   level 1  -> ALL CAPS (normal weight)
+  //   level 1  -> ALL CAPS, regular weight (400)
   //   level 2  -> Title Case ("Aa": first letter of each word capitalised)
   //   level 3  -> medium weight (500)
   //   level 4+ -> regular weight (400) + italic
@@ -1358,7 +1358,7 @@
   // on top of this. Edit this one function to change the scheme.
   function autoLevelFormat(node, depth) {
     if (node && nodeIsTable(node)) return {};
-    if (depth === 1) return { caps: true };
+    if (depth === 1) return { caps: true, weight: 400, noBold: true }; // noBold: ignore a saved manual Bold/AA flag
     if (depth === 2) return { titleCase: true };
     if (depth === 3) return { weight: 500 };
     if (depth >= 4) return { weight: 400, italic: true };
@@ -15282,7 +15282,7 @@
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
     const autoFmt = autoLevelFormat(node, depth);
-    div.style.fontWeight = (node.bold || autoFmt.bold) ? (depth === 0 ? "900" : "800") : (autoFmt.weight ? String(autoFmt.weight) : "");
+    div.style.fontWeight = ((node.bold && !autoFmt.noBold) || autoFmt.bold) ? (depth === 0 ? "900" : "800") : (autoFmt.weight ? String(autoFmt.weight) : "");
     div.style.fontStyle = autoFmt.italic ? "italic" : "";
     div.style.textTransform = (node.allCaps || autoFmt.caps) ? "uppercase" : autoFmt.titleCase ? "capitalize" : "";
 
