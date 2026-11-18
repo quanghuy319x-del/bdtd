@@ -22677,6 +22677,9 @@
   // full canvas refresh is deferred until the editor closes.
   let noteMapUndoCaptured = false;
   let noteMapVisualDirty = false;
+  // First edit of an open-editor session is committed right away (next frame) so a
+  // brand-new note's icon shows immediately instead of after the idle debounce.
+  let noteFirstEditCommitted = false;
   let noteIsResizing = false;
   // Android/phone contenteditable is particularly sensitive to full-DOM
   // serialization and command-state queries while the IME is composing.
@@ -23466,6 +23469,7 @@
     if (freshNoteSession) {
       noteMapUndoCaptured = false;
       noteMapVisualDirty = false;
+      noteFirstEditCommitted = false;
     }
     commitEditIfActive();
     // Where ← Back should go. A return point handed over by a browser wins;
@@ -24863,6 +24867,7 @@
     noteReturn = null;
     noteMapUndoCaptured = false;
     noteMapVisualDirty = false;
+    noteFirstEditCommitted = false;
     $("#note-color-popover").classList.add("hidden");
     $("#note-emoji-popover").classList.add("hidden");
     zoomModalClose(noteModal);
@@ -24916,6 +24921,12 @@
     saveNoteCrashDraftNow();
     scheduleBrainstormPillLive();
     clearTimeout(noteSaveTimer);
+    if (!noteFirstEditCommitted) {
+      noteFirstEditCommitted = true;
+      noteSaveTimer = null;
+      requestAnimationFrame(() => commitNotesToNode());
+      return;
+    }
     noteSaveTimer = setTimeout(() => {
       noteSaveTimer = null;
       commitNotesToNode();
@@ -24970,6 +24981,10 @@
         // The Tasks modal is a small focused surface and may be visible under
         // the note editor; keep it current without rebuilding the mindmap.
         if (!tasksModal.classList.contains("hidden")) renderTasksModal();
+        // The task's note icon must also appear/disappear immediately on the
+        // open Calendar and on the map node, not only after the editor closes.
+        refreshNodeOrRenderAll(node.id);
+        if (calendarModal && !calendarModal.classList.contains("hidden")) renderCalendar();
       }
       return;
     }
