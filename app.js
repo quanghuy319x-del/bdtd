@@ -1347,7 +1347,7 @@
   }
 
   // Auto-format by level (level = depth; level 1 = a direct child of the root).
-  //   level 1  -> bold + ALL CAPS
+  //   level 1  -> ALL CAPS (normal weight)
   //   level 2  -> Title Case ("Aa": first letter of each word capitalised)
   //   level 3  -> medium weight (500)
   //   level 4+ -> regular weight (400) + italic
@@ -1356,7 +1356,7 @@
   // on top of this. Edit this one function to change the scheme.
   function autoLevelFormat(node, depth) {
     if (node && nodeIsTable(node)) return {};
-    if (depth === 1) return { bold: true, caps: true };
+    if (depth === 1) return { caps: true };
     if (depth === 2) return { titleCase: true };
     if (depth === 3) return { weight: 500 };
     if (depth >= 4) return { weight: 400, italic: true };
