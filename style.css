@@ -11997,3 +11997,48 @@ body.signed-out #mindmap-list{display:none!important}
   right:-2px !important; top:-3px !important;
 }
 #calendar-modal .calendar-summary-icon-strip{ padding-top: 8px !important; padding-right: 8px !important; }
+
+
+/* v810 — Calendar icon count badges are never trimmed. Icons are ~20% smaller,
+   badges are bigger, the strip no longer clips (overflow:visible) and it keeps
+   padding at the top/right so the protruding badge always has room inside the
+   date cell (which itself clips with overflow:hidden). */
+#calendar-modal .calendar-summary-icon-strip,
+#calendar-modal #calendar-grid .calendar-summary-icon-strip,
+#calendar-modal #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip,
+#calendar-modal #calendar-grid.calendar-six-grid .calendar-summary-icon-strip{
+  overflow:visible!important;
+}
+/* Phone / base */
+#calendar-modal #calendar-grid .calendar-summary-icon-strip{
+  --fix-icon:calc(var(--cal-icon-size, 12cqw) * .8);
+  --fix-count:calc(var(--cal-count-size, 6.5cqw) * 1.7);
+  --fix-pad:calc(var(--fix-count) * .5);
+  padding-top:var(--fix-pad)!important;
+  padding-right:var(--fix-pad)!important;
+}
+#calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon{
+  width:var(--fix-icon)!important;
+  height:var(--fix-icon)!important;
+  min-width:var(--fix-icon)!important;
+  flex:0 0 var(--fix-icon)!important;
+}
+#calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+  min-width:var(--fix-count)!important;
+  height:var(--fix-count)!important;
+  line-height:var(--fix-count)!important;
+  font-size:calc(var(--fix-count) * .68)!important;
+  right:calc(var(--fix-count) * -.5)!important;
+  top:calc(var(--fix-count) * -.5)!important;
+  padding:0 calc(var(--fix-count) * .12)!important;
+  border-width:1px!important;
+  z-index:20!important;
+}
+/* Desktop: sizes follow the cell width */
+@media (min-width:641px){
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip{
+    --fix-icon:calc(var(--cal-child-icon, 20cqw) * .8);
+    --fix-count:calc(var(--cal-child-icon, 20cqw) * .95);
+    --fix-pad:calc(var(--fix-count) * .5);
+  }
+}
