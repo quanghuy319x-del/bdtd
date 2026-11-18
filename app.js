@@ -18298,6 +18298,8 @@
     if (!dragCandidate.moved) {
       if (Math.hypot(dxScreen, dyScreen) < DRAG_THRESHOLD) return;
       dragCandidate.moved = true;
+      // Held-then-dragged: the long-press menu must vanish as soon as the node moves.
+      closeContextMenu();
       pushUndo();
       const div = nodesLayer.querySelector(`.node[data-id="${node.id}"]`);
       // Cache the dragged node's own div and every descendant's div once,
@@ -24209,6 +24211,7 @@
         if (!drag.moved && dx * dx + dy * dy < 36) return;
         drag.moved = true;
         itemRow.classList.add("subsubtask-dragging");
+        closeContextMenu();
         // Use row geometry instead of event.target, because pointer
         // capture keeps the target fixed at the drag handle.
         const rows = Array.from(list.querySelectorAll(".subsubtask-item"));
@@ -28275,6 +28278,7 @@
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
     li.classList.add("task-dragging");
+    closeContextMenu();
   }
 
   function endTaskDrag(li) {
@@ -28380,6 +28384,7 @@
         active = true;
         taskDragState = { taskId };
         li.classList.add("task-dragging", "touch-dragging");
+        closeContextMenu();
         try { handle.setPointerCapture(pointerId); } catch (err) {}
         try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
         makeGhost(startX, startY);
@@ -28629,6 +28634,7 @@
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
     row.classList.add("task-dragging");
+    closeContextMenu();
   }
 
   function endSubtaskDrag(row) {
@@ -32811,6 +32817,7 @@ function closeSubtaskFocusMode() {
       e.dataTransfer.effectAllowed = "move";
       try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
       li.classList.add("task-dragging");
+      closeContextMenu();
     });
     handle.addEventListener("dragend", () => {
       li.classList.remove("task-dragging");
@@ -33064,6 +33071,7 @@ function closeSubtaskFocusMode() {
         e.dataTransfer.effectAllowed = "move";
         try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
         row.classList.add("task-dragging");
+        closeContextMenu();
       });
       row.addEventListener("dragend", () => {
         row.classList.remove("task-dragging");
