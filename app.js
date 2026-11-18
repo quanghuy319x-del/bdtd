@@ -893,6 +893,8 @@
   }
 
   const CHECKBOX_W = 22;
+  // Level-1 nodes (direct children of the root, the solid-filled "pill") are drawn this much bigger.
+  const LEVEL1_SCALE = 1.5;
   function computeNodeBox(node) {
     const depth = node._depth || 0;
     // A node checkbox (right-click menu -> "Add checkbox") sits inside the
@@ -900,9 +902,9 @@
     const cbExtra = node.checkbox && !nodeIsTable(node) ? CHECKBOX_W : 0;
     // v803: tighter text-to-border gap on non-root nodes (8px each side, was 16px).
     const padX = (depth === 0 ? 56 : 16) + cbExtra;
-    const vPad = depth === 0 ? 28 : (depth === 1 && isPillTheme() ? 12 : 6); // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
-    const baseH = depth === 0 ? ROOT_H : NODE_H;
-    const minW = (depth === 0 ? 130 : 56) + cbExtra;
+    const vPad = depth === 0 ? 28 : depth === 1 ? Math.round((isPillTheme() ? 12 : 6) * LEVEL1_SCALE) : 6; // v794: was 16 (matches .node:not(.depth-0) padding 1px + 2px border)
+    const baseH = depth === 0 ? ROOT_H : depth === 1 ? Math.round(NODE_H * LEVEL1_SCALE) : NODE_H;
+    const minW = (depth === 0 ? 130 : depth === 1 ? Math.round(56 * LEVEL1_SCALE) : 56) + cbExtra;
 
     // v804: icons (notes, links, photos, timer...) sit inline at the END of the
     // node text instead of in a row below it. Work out their width first so the
@@ -965,7 +967,7 @@
       w = clamp(Math.ceil(widest) + padX + SAFETY + inlineExtra, minW, maxBoxW);
     }
 
-    const lineHeight = isPillTheme() ? Math.ceil(fontSize * 1.3) : (depth === 0 ? 24 : depth === 3 ? 16 : 17);
+    const lineHeight = isPillTheme() ? Math.ceil(fontSize * 1.3) : (depth === 0 ? 24 : depth === 1 ? Math.ceil(fontSize * 1.3) : depth === 3 ? 16 : 17);
     h = Math.max(baseH, Math.ceil(lines.length * lineHeight + vPad));
     }
 
@@ -1340,8 +1342,8 @@
   }
   // Font size by depth: bigger on the higher-level nodes.
   function nodeFontSizeFor(depth) {
-    if (isPillTheme()) return depth === 0 ? 30 : depth === 1 ? 17 : depth === 2 ? 14.5 : 13.5;
-    return depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
+    if (isPillTheme()) return depth === 0 ? 30 : depth === 1 ? 17 * LEVEL1_SCALE : depth === 2 ? 14.5 : 13.5;
+    return depth === 0 ? 21 : depth === 1 ? Math.round(13.5 * LEVEL1_SCALE) : depth === 3 ? 12.5 : 13.5;
   }
 
   // Auto-format by level (level = depth; level 1 = a direct child of the root).
@@ -15214,6 +15216,7 @@
     div.style.top = (oy + node._y + (node.oy || 0) - h / 2) + "px";
     div.style.width = w + "px";
     div.style.height = h + "px";
+    if (depth === 1) div.style.fontSize = nodeFontSizeFor(1) + "px";
     div.title = node.text;
 
     const theme = state.current.theme;
