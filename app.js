@@ -92,6 +92,7 @@
       stripBucketCount,
       noteBucketCount,
       nodeNoteIconCount,
+      urlBucketCount,
       nodeTaskProgress,
       isClockHidden
     } = deps;
@@ -810,7 +811,7 @@
     // Square markers with borders are up to ~12px wide in the real DOM.
     for (let i = 0; i < shownPhotos; i++) add(12);
     for (let i = 0; i < (noteIconCount > 1 ? 1 : noteIconCount); i++) add(12);
-    for (let i = 0; i < (urlCount > 1 ? 1 : urlCount); i++) add(12);
+    for (let i = 0; i < urlBucketCount(Array.isArray(a.urls) && a.urls.length ? a.urls : (a.url ? [a.url] : [])); i++) add(12);
 
     // v410: tasks use only the absolutely-positioned top-right score badge,
     // so they consume no bottom-strip width at all.
@@ -913,7 +914,7 @@
     const eImages = getNodeImages(node);
     const eIconCount =
       nodeNoteIconCount(node)
-      + stripBucketCount(getNodeUrls(node).length)
+      + urlBucketCount(getNodeUrls(node))
       + (nodeAffirmationWins(node) ? 1 : 0)
       + (getNodeTimePlayed(node) ? 1 : 0)
       + Math.max(brainstormPoints(node) > 0 ? 1 : 0, Math.min(1, nodeSubtaskBrainstormMarkerCount(node)));
@@ -983,7 +984,7 @@
     // box reserves exactly as much room as actually gets drawn either way.
     const stripIconCountForBox =
       nodeNoteIconCount(node)
-      + stripBucketCount(getNodeUrls(node).length)
+      + urlBucketCount(getNodeUrls(node))
       + nodeSubtaskBrainstormMarkerCount(node)
       + (nodeAffirmationWins(node) ? 1 : 0)
       + (getNodeTimePlayed(node) ? 1 : 0)
@@ -10049,6 +10050,14 @@
     });
     return kinds.size;
   }
+  // Links collapse per BRAND icon (YouTube, Docs, Sheets..., plain link): 2+ of
+  // the same brand -> that brand's own icon with a badge.
+  function urlBucketCount(urls) {
+    const c = {};
+    (urls || []).forEach((u) => { const k = linkIconKey(u); c[k] = (c[k] || 0) + 1; });
+    return Object.keys(c).reduce((sum, k) => sum + stripBucketCount(c[k]), 0);
+  }
+  const LINK_BRAND_LABELS = { youtube: "YouTube", docs: "Docs", sheets: "Sheets", slides: "Slides", forms: "Forms", photos: "Photos", drive: "Drive", link: "" };
   function noteBucketCount(notes) {
     const counts = {};
     (notes || []).forEach((n) => { const k = noteKindKey(n); counts[k] = (counts[k] || 0) + 1; });
@@ -14618,26 +14627,28 @@
   // Note-like icons carry data-icon-kind (note / drc / plan / brainstorm /
   // special-subtask name) so DIFFERENT kinds never merge into one badge.
   const ICON_KIND_LABELS = {
-    "photo": "Photos", "link": "Links", "k:note": "Notes", "k:drc": "DRC notes",
+    "photo": "Photos", "k:note": "Notes", "k:drc": "DRC notes",
     "k:plan": "Plan notes", "k:brainstorm": "Brainstorm notes"
   };
   function cellIconTypeKey(el) {
     const cl = el.classList;
     if (cl.contains("node-table-cell-add")) return null;
     if (el.dataset && el.dataset.iconKind) return "k:" + el.dataset.iconKind;
+    if (el.dataset && el.dataset.linkKey) return "link:" + el.dataset.linkKey;
     if (cl.contains("calendar-retained-icon")) {
       const t = el.textContent.trim();
       if (t === "🖼") return "photo";
       if (t === "📝") return "k:note";
       if (t === "☑") return "k:plan";
       if (t === "📋") return "k:drc";
-      if (t === "🔗" || t === "▶") return "link";
+      if (t === "🔗") return "link:link";
+      if (t === "▶") return "link:youtube";
       return null;
     }
     if (cl.contains("node-table-cell-photo") || cl.contains("calendar-summary-date-photo")) return "photo";
     if (cl.contains("node-table-cell-drc")) return "k:drc";
     if (cl.contains("node-table-cell-note")) return "k:note";
-    if (cl.contains("node-table-cell-link")) return "link";
+    if (cl.contains("node-table-cell-link")) return "link:link";
     return null;
   }
   function collapseSameTypeIcons(strip) {
@@ -14651,7 +14662,10 @@
     });
     groups.forEach((members, key) => {
       if (members.length < 2) return;
-      const label = ICON_KIND_LABELS[key] || (key.startsWith("k:") ? key.slice(2) : "Items");
+      const brandKey = key.startsWith("link:") ? key.slice(5) : "";
+      const label = key.startsWith("link:")
+        ? ((LINK_BRAND_LABELS[brandKey] ? LINK_BRAND_LABELS[brandKey] + " " : "") + "links")
+        : (ICON_KIND_LABELS[key] || (key.startsWith("k:") ? key.slice(2) : "Items"));
       const first = members[0];
       const total = members.reduce((sum, m) => {
         const b = m.querySelector(":scope > .node-marker-count");
@@ -14660,7 +14674,10 @@
       }, 0);
       const stand = document.createElement("span");
       stand.className = first.className.replace(/\bcalendar-summary-date-(photo|link)\b/g, "").trim();
-      if (key === "link") stand.innerHTML = LINK_ICON_SVGS.link;
+      if (key.startsWith("link:")) {
+        stand.innerHTML = LINK_ICON_SVGS[brandKey] || LINK_ICON_SVGS.link;
+        stand.dataset.linkKey = brandKey;
+      }
       else if (first.classList.contains("calendar-retained-icon")) stand.textContent = first.textContent;
       else stand.innerHTML = first.innerHTML.replace(/<span class="node-marker-count">[^<]*<\/span>/g, "");
       if (first.style.backgroundImage) stand.style.backgroundImage = first.style.backgroundImage;
@@ -14885,6 +14902,7 @@
     getCellUrls(a).forEach((u, i) => {
       const linkIcon = document.createElement("span");
       linkIcon.className = "node-table-cell-icon node-table-cell-link";
+      linkIcon.dataset.linkKey = linkIconKey(u);
       linkIcon.innerHTML = linkIconFor(u);
       const linkTitle = getCellLinkTitle(a, u);
       linkIcon.title = (linkTitle || u) + " — drag onto a node or cell to move (hold Alt to copy)";
@@ -15607,7 +15625,7 @@
     // since it's a full-width row rather than a small cell.
     const stripIconCount =
       nodeNoteIconCount(node)
-      + stripBucketCount(nodeUrls.length)
+      + urlBucketCount(nodeUrls)
       + (affirmationWins ? 1 : 0)
       + (timePlayed ? 1 : 0)
       + (nodeHasBrainstormMarker ? 1 : 0);
@@ -15850,21 +15868,29 @@
       // STRIP_OVERFLOW_CAP links, collapses the same way notes/photos do:
       // one representative link icon with a count badge, opening the full
       // list (openLinksManageMenu) on click or right-click.
-      const urlsOverflow = nodeUrls.length > STRIP_OVERFLOW_CAP;
-      (urlsOverflow ? nodeUrls.slice(0, 1) : nodeUrls).forEach((u, i) => {
+      const urlGroups = [];
+      const urlGroupByKey = {};
+      nodeUrls.forEach((u, idx) => {
+        const k = linkIconKey(u);
+        if (!urlGroupByKey[k]) { urlGroupByKey[k] = { key: k, items: [] }; urlGroups.push(urlGroupByKey[k]); }
+        urlGroupByKey[k].items.push({ u, idx });
+      });
+      urlGroups.forEach((grp) => {
+      const urlsOverflow = grp.items.length > STRIP_OVERFLOW_CAP;
+      (urlsOverflow ? grp.items.slice(0, 1) : grp.items).forEach(({ u, idx: i }) => {
         const urlIcon = document.createElement("span");
         urlIcon.className = "node-photo-thumb node-url-marker";
         urlIcon.draggable = true;
         urlIcon.addEventListener("dragend", endMarkerDrag);
         if (urlsOverflow) {
-          urlIcon.innerHTML = LINK_ICON_SVGS.link;
-          urlIcon.title = `${nodeUrls.length} links — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
+          urlIcon.innerHTML = LINK_ICON_SVGS[grp.key] || LINK_ICON_SVGS.link;
+          urlIcon.title = `${grp.items.length} ${LINK_BRAND_LABELS[grp.key] ? LINK_BRAND_LABELS[grp.key] + " " : ""}links — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
           urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "urls"));
           armMarkerTouchDrag(urlIcon, node, "urls");
           urlIcon.addEventListener("click", (e) => { e.stopPropagation(); openLinksManageMenu(node.id, e.clientX, e.clientY); });
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
-          badge.textContent = String(nodeUrls.length);
+          badge.textContent = String(grp.items.length);
           urlIcon.appendChild(badge);
         } else {
           urlIcon.innerHTML = linkIconFor(u);
@@ -15894,6 +15920,7 @@
           else openUrlSingleManageMenu(node.id, i, e.clientX, e.clientY);
         });
         strip.appendChild(urlIcon);
+      });
       });
 
       if (affirmationWins) {
@@ -32491,6 +32518,7 @@ function closeSubtaskFocusMode() {
             const icon = document.createElement("button");
             icon.type = "button";
             icon.className = "node-table-cell-icon node-table-cell-link calendar-summary-date-link";
+            icon.dataset.linkKey = linkIconKey(url);
             icon.innerHTML = linkIconFor(url);
             icon.title = (getLinkTitle(dateLinkHost, url) || url) + " — click to open, right-click to remove";
             icon.setAttribute("aria-label", icon.title);
@@ -35918,6 +35946,7 @@ function closeSubtaskFocusMode() {
     stripBucketCount,
     noteBucketCount,
     nodeNoteIconCount,
+    urlBucketCount,
     nodeTaskProgress,
     isClockHidden
   });
