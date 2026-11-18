@@ -1287,7 +1287,7 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-cell-icons{
   position: absolute;
-  right: 3px;
+  right: 6px;
   bottom: 2px;
   z-index: 2;
   display: flex;
@@ -1621,8 +1621,8 @@ body.signed-out #title-input{ visibility:hidden; }
    but make counters inside cell icons smaller and park them mostly outside
    the icon's top-right corner. */
 .node-table-cell-icon > .node-marker-count{
-  right:-6px;
-  top:-6px;
+  right:-3px;
+  top:-5px;
   min-width:9px;
   height:9px;
   padding:0 1px;
@@ -11965,4 +11965,16 @@ body.signed-out #mindmap-list{display:none!important}
 .node.inline-strip-left .node-photo-strip.large.inline{
   order: -1;
   margin: 0 6px 0 0;
+}
+
+
+/* v807: count badges sit on the icon's top-right corner and must never be
+   clipped by the strip, the cell or the calendar date tile. */
+.node-photo-strip,
+.node-photo-thumb,
+.node-table-cell-icons,
+.node-table-cell-icon{ overflow: visible; }
+#calendar-modal .calendar-summary-icon-strip{
+  padding-top: 7px !important;
+  padding-right: 7px !important;
 }

@@ -91,6 +91,7 @@
       brainstormPoints,
       stripBucketCount,
       noteBucketCount,
+      nodeNoteIconCount,
       nodeTaskProgress,
       isClockHidden
     } = deps;
@@ -911,9 +912,8 @@
     // keep the old below-the-text strip.
     const eImages = getNodeImages(node);
     const eIconCount =
-      noteBucketCount(getNodeNotes(node))
+      nodeNoteIconCount(node)
       + stripBucketCount(getNodeUrls(node).length)
-      + nodeTaskNoteMarkerCount(node)
       + (nodeAffirmationWins(node) ? 1 : 0)
       + (getNodeTimePlayed(node) ? 1 : 0)
       + Math.max(brainstormPoints(node) > 0 ? 1 : 0, Math.min(1, nodeSubtaskBrainstormMarkerCount(node)));
@@ -982,9 +982,8 @@
     // STRIP_OVERFLOW_CAP too (see stripBucketCount/renderNode), so the
     // box reserves exactly as much room as actually gets drawn either way.
     const stripIconCountForBox =
-      noteBucketCount(getNodeNotes(node))
+      nodeNoteIconCount(node)
       + stripBucketCount(getNodeUrls(node).length)
-      + nodeTaskNoteMarkerCount(node)
       + nodeSubtaskBrainstormMarkerCount(node)
       + (nodeAffirmationWins(node) ? 1 : 0)
       + (getNodeTimePlayed(node) ? 1 : 0)
@@ -10031,6 +10030,25 @@
   function noteKindKey(n) {
     return isBrainstormNote(n) ? "brainstorm" : (isDRCNote(n) ? "drc" : (isPlanNote(n) ? "plan" : "note"));
   }
+  // Kind of the note icon a category (task) or task (subtask) shows on the strip.
+  function ownerNoteKind(owner, isSubtask) {
+    const first = getTaskNotes(owner)[0];
+    if (first && isDRCNote(first)) return "drc";
+    if (isPlanNoteFor(first, owner)) return "plan";
+    if (isSubtask && specialSubtaskIconSvg(owner)) return specialSubtaskNoteTemplateName(owner);
+    return "note";
+  }
+  // Exact number of note-type icons the node strip ends up showing: one per
+  // distinct kind across node notes, category notes and task notes.
+  function nodeNoteIconCount(node) {
+    const kinds = new Set();
+    countedNotes(getNodeNotes(node), null).forEach((n) => kinds.add(noteKindKey(n)));
+    getNodeTasks(node).forEach((t) => {
+      if (taskHasNotes(t)) kinds.add(ownerNoteKind(t, false));
+      getTaskSubtasks(t).forEach((sub) => { if (taskHasNotes(sub)) kinds.add(ownerNoteKind(sub, true)); });
+    });
+    return kinds.size;
+  }
   function noteBucketCount(notes) {
     const counts = {};
     (notes || []).forEach((n) => { const k = noteKindKey(n); counts[k] = (counts[k] || 0) + 1; });
@@ -14593,24 +14611,32 @@
     return badge;
   }
 
-  // v805: icon-badge rule for table / calendar cells — when a strip holds 2+
-  // icons of the same type (photos, notes, DRC, links) they collapse into one
-  // icon carrying a count badge. Click / right-click lists the originals; each
-  // row triggers the original icon's own click, so nothing becomes unreachable.
+  // v807: icon-badge rule — when a strip holds 2+ icons of the same type they
+  // collapse into one icon with a count badge. Used by node strips, table cells
+  // and calendar dates. Click / right-click lists the originals; each row
+  // re-triggers the original icon's own click, so nothing becomes unreachable.
+  // Note-like icons carry data-icon-kind (note / drc / plan / brainstorm /
+  // special-subtask name) so DIFFERENT kinds never merge into one badge.
+  const ICON_KIND_LABELS = {
+    "photo": "Photos", "link": "Links", "k:note": "Notes", "k:drc": "DRC notes",
+    "k:plan": "Plan notes", "k:brainstorm": "Brainstorm notes"
+  };
   function cellIconTypeKey(el) {
     const cl = el.classList;
     if (cl.contains("node-table-cell-add")) return null;
+    if (el.dataset && el.dataset.iconKind) return "k:" + el.dataset.iconKind;
     if (cl.contains("calendar-retained-icon")) {
       const t = el.textContent.trim();
       if (t === "🖼") return "photo";
-      if (t === "📝" || t === "☑") return "note";
-      if (t === "📋") return "drc";
+      if (t === "📝") return "k:note";
+      if (t === "☑") return "k:plan";
+      if (t === "📋") return "k:drc";
       if (t === "🔗" || t === "▶") return "link";
       return null;
     }
     if (cl.contains("node-table-cell-photo") || cl.contains("calendar-summary-date-photo")) return "photo";
-    if (cl.contains("node-table-cell-drc")) return "drc";
-    if (cl.contains("node-table-cell-note")) return "note";
+    if (cl.contains("node-table-cell-drc")) return "k:drc";
+    if (cl.contains("node-table-cell-note")) return "k:note";
     if (cl.contains("node-table-cell-link")) return "link";
     return null;
   }
@@ -14623,9 +14649,9 @@
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(el);
     });
-    const LABELS = { photo: "Photos", note: "Notes", drc: "DRC", link: "Links" };
     groups.forEach((members, key) => {
       if (members.length < 2) return;
+      const label = ICON_KIND_LABELS[key] || (key.startsWith("k:") ? key.slice(2) : "Items");
       const first = members[0];
       const total = members.reduce((sum, m) => {
         const b = m.querySelector(":scope > .node-marker-count");
@@ -14638,8 +14664,9 @@
       else if (first.classList.contains("calendar-retained-icon")) stand.textContent = first.textContent;
       else stand.innerHTML = first.innerHTML.replace(/<span class="node-marker-count">[^<]*<\/span>/g, "");
       if (first.style.backgroundImage) stand.style.backgroundImage = first.style.backgroundImage;
+      if (first.dataset && first.dataset.iconKind) stand.dataset.iconKind = first.dataset.iconKind;
       stand.draggable = false;
-      stand.title = `${total} ${LABELS[key].toLowerCase()} — click to see the list`;
+      stand.title = `${total} ${label.toLowerCase()} — click to see the list`;
       const badge = document.createElement("span");
       badge.className = "node-marker-count";
       badge.textContent = String(total);
@@ -14647,13 +14674,14 @@
       const openList = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const cx = e.clientX, cy = e.clientY;
         resetContextMenu();
         const header = document.createElement("div");
         header.className = "ctx-item ctx-item-header";
         header.style.cursor = "default";
         const hl = document.createElement("span");
         hl.className = "ctx-item-label";
-        hl.textContent = `${LABELS[key]} (${total})`;
+        hl.textContent = `${label} (${total})`;
         header.appendChild(hl);
         ctxMenu.appendChild(header);
         members.forEach((m, idx) => {
@@ -14662,17 +14690,21 @@
           const lab = document.createElement("span");
           lab.className = "ctx-item-label";
           const t = (m.title || "").replace(/ — (drag|click|right-click|retained).*$/i, "").trim();
-          lab.textContent = t || `${LABELS[key]} ${idx + 1}`;
+          lab.textContent = t || `${label} ${idx + 1}`;
           row.title = m.title || "";
           row.appendChild(lab);
-          row.addEventListener("click", () => { closeContextMenu(); m.dispatchEvent(new MouseEvent("click", { bubbles: false, cancelable: true })); });
+          row.addEventListener("click", () => {
+            closeContextMenu();
+            m.dispatchEvent(new MouseEvent("click", { bubbles: false, cancelable: true, clientX: cx, clientY: cy }));
+          });
           ctxMenu.appendChild(row);
         });
-        positionContextMenu(e.clientX, e.clientY);
+        positionContextMenu(cx, cy);
       };
       stand.addEventListener("click", openList);
       stand.addEventListener("contextmenu", openList);
       stand.addEventListener("mousedown", (e) => e.stopPropagation());
+      stand.addEventListener("pointerdown", (e) => e.stopPropagation());
       strip.insertBefore(stand, first);
       members.forEach((m) => m.remove());
     });
@@ -14758,6 +14790,7 @@
         noteIcon.innerHTML = isDRCNote(n)
           ? NODE_DRC_ICON_IMG
           : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        noteIcon.dataset.iconKind = isDRCNote(n) ? "drc" : (isPlanNote(n) ? "plan" : "note");
         noteIcon.title = (isDRCNote(n)
           ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
           : notePreviewText(n)) + " — drag onto a node or cell to move (hold Alt to copy)";
@@ -14791,6 +14824,7 @@
         icon.innerHTML = isDrc
           ? NODE_DRC_ICON_IMG
           : (isPlanNoteFor(first, t) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        icon.dataset.iconKind = ownerNoteKind(t, false);
         icon.title = isDrc
           ? `Category "${t.text || "(untitled category)"}" — DRC, ${drcNoteIsFilled(first) ? "filled in" : "not filled in yet"}`
           : `Category "${t.text || "(untitled category)"}" — ${notePreviewText(first)}`;
@@ -14816,6 +14850,7 @@
           : (isPlanNoteFor(first, sub)
             ? NODE_PLAN_ICON_IMG
             : (specialSubtaskIconSvg(sub) || CELL_NOTE_ICON_SVG));
+        icon.dataset.iconKind = ownerNoteKind(sub, true);
         icon.title = isDrc
           ? `Task "${sub.text || "(untitled task)"}" — DRC, ${drcNoteIsFilled(first) ? "filled in" : "not filled in yet"}`
           : (first
@@ -15571,10 +15606,8 @@
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
     const stripIconCount =
-      noteBucketCount(nodeNotes)
+      nodeNoteIconCount(node)
       + stripBucketCount(nodeUrls.length)
-      + stripBucketCount(tasksWithNotes.length)
-      + stripBucketCount(subtasksWithNotes.length)
       + (affirmationWins ? 1 : 0)
       + (timePlayed ? 1 : 0)
       + (nodeHasBrainstormMarker ? 1 : 0);
@@ -15658,6 +15691,7 @@
         noteIcon.className = "node-photo-thumb node-note-marker" +
           (isDRCNote(n) ? " node-drc-marker" : "") +
           (isBrainstormNote(n) ? " node-brainstorm-marker" : "");
+        noteIcon.dataset.iconKind = noteKindKey(n);
         noteIcon.innerHTML = isBrainstormNote(n) ? "🧠" :
           (isDRCNote(n) ? NODE_DRC_ICON_IMG : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG));
         noteIcon.draggable = true;
@@ -15701,7 +15735,7 @@
       // Not draggable: unlike a node's own notes, a task's notes stay
       // with the task, not the node, so they don't make sense to drag
       // onto another node on their own.
-      const tasksOverflow = tasksWithNotes.length > STRIP_OVERFLOW_CAP;
+      const tasksOverflow = false; // v807: merged by kind in collapseSameTypeIcons below
       (tasksOverflow ? tasksWithNotes.slice(0, 1) : tasksWithNotes).forEach((t) => {
         const taskNoteIcon = document.createElement("span");
         // A task's note counts as a DRC note by the same rule as a
@@ -15711,6 +15745,7 @@
         const firstTaskNote = getTaskNotes(t)[0];
         const taskNoteIsDRC = isDRCNote(firstTaskNote);
         taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker" + (taskNoteIsDRC ? " node-drc-marker" : "");
+        taskNoteIcon.dataset.iconKind = ownerNoteKind(t, false);
         taskNoteIcon.innerHTML = taskNoteIsDRC ? NODE_DRC_ICON_IMG : (isPlanNoteFor(firstTaskNote, t) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
         // A task's own name already works as that note's title, so unlike
         // a node's or cell's own notes (notePreviewText), this never falls
@@ -15758,12 +15793,13 @@
       // named "DRC" shares the node's single DRC note instead (see the
       // redirect in openNoteModal), so it never shows up here on its own;
       // it already reads on the node as part of the DRC note above.
-      const subtasksOverflow = subtasksWithNotes.length > STRIP_OVERFLOW_CAP;
+      const subtasksOverflow = false; // v807: merged by kind in collapseSameTypeIcons below
       (subtasksOverflow ? subtasksWithNotes.slice(0, 1) : subtasksWithNotes).forEach(({ t, s }) => {
         const subtaskNoteIcon = document.createElement("span");
         const firstSubtaskNote = getTaskNotes(s)[0];
         const subtaskNoteIsDRC = isDRCNote(firstSubtaskNote);
         subtaskNoteIcon.className = "node-photo-thumb node-note-marker node-subtask-note-marker" + (subtaskNoteIsDRC ? " node-drc-marker" : "");
+        subtaskNoteIcon.dataset.iconKind = ownerNoteKind(s, true);
         subtaskNoteIcon.innerHTML = subtaskNoteIsDRC
           ? NODE_DRC_ICON_IMG
           : (isPlanNoteFor(firstSubtaskNote, s)
@@ -15974,6 +16010,8 @@
         strip.appendChild(bIcon);
       }
 
+      // v807: same-kind note icons from node notes, categories and tasks -> one badge icon.
+      collapseSameTypeIcons(strip);
       div.appendChild(strip);
     }
 
@@ -35879,6 +35917,7 @@ function closeSubtaskFocusMode() {
     brainstormPoints,
     stripBucketCount,
     noteBucketCount,
+    nodeNoteIconCount,
     nodeTaskProgress,
     isClockHidden
   });
