@@ -893,8 +893,6 @@
   }
 
   const CHECKBOX_W = 22;
-  // Level-1 nodes (direct children of the root, the solid-filled "pill") are drawn this much bigger.
-  const LEVEL1_SCALE = 1.5;
   function computeNodeBox(node) {
     const depth = node._depth || 0;
     // A node checkbox (right-click menu -> "Add checkbox") sits inside the
@@ -1340,6 +1338,10 @@
     const i = PALETTE.indexOf(c);
     return i >= 0 ? PILL_PALETTE[i] : c;
   }
+  // Level-1 nodes (direct children of the root, the solid-filled "pill") are drawn this
+  // much bigger. Declared here (global scope) because both nodeFontSizeFor() below and
+  // computeNodeBox() inside the layout module read it.
+  const LEVEL1_SCALE = 1.5;
   // Font size by depth: bigger on the higher-level nodes.
   function nodeFontSizeFor(depth) {
     if (isPillTheme()) return depth === 0 ? 30 : depth === 1 ? 17 * LEVEL1_SCALE : depth === 2 ? 14.5 : 13.5;
