@@ -779,7 +779,7 @@
     const photoCount = Array.isArray(a.images) && a.images.length
       ? a.images.length
       : (a.image ? 1 : 0);
-    const shownPhotos = photoCount > 4 ? 1 : photoCount;
+    const shownPhotos = photoCount > 1 ? 1 : photoCount;
     const notes = Array.isArray(a.notes) && a.notes.length
       ? a.notes
       : (a.note ? [{ title: "", html: a.note }] : []);
@@ -807,8 +807,8 @@
 
     // Square markers with borders are up to ~12px wide in the real DOM.
     for (let i = 0; i < shownPhotos; i++) add(12);
-    for (let i = 0; i < noteIconCount; i++) add(12);
-    for (let i = 0; i < urlCount; i++) add(12);
+    for (let i = 0; i < (noteIconCount > 1 ? 1 : noteIconCount); i++) add(12);
+    for (let i = 0; i < (urlCount > 1 ? 1 : urlCount); i++) add(12);
 
     // v410: tasks use only the absolutely-positioned top-right score badge,
     // so they consume no bottom-strip width at all.
@@ -9884,7 +9884,7 @@
         if (taskHasNotes(sub)) subs++;
       });
     });
-    // v804: 3+ category notes (or 3+ task notes) collapse to one badge icon each.
+    // v805: 2+ category notes (or 2+ task notes) collapse to one badge icon each.
     return stripBucketCount(tasks) + stripBucketCount(subs);
   }
   function nodeSubtaskBrainstormMarkerCount(node) {
@@ -10017,7 +10017,7 @@
   // to a single representative icon + a "Nx" count badge once there are
   // more than this many, so a node with dozens of any one thing still
   // reads as one compact cell instead of a wall of tiny icons.
-  const STRIP_OVERFLOW_CAP = 2; // v804: 3+ of the same item type collapse to one icon with a count badge
+  const STRIP_OVERFLOW_CAP = 1; // v805: 2+ of the same item type collapse to one icon with a count badge
   // How many cells a bucket of items (all the notes, or all the links)
   // contributes to the strip's layout — every item while under the cap,
   // or just the one stand-in cell once collapsed.
@@ -14581,6 +14581,92 @@
     return badge;
   }
 
+  // v805: icon-badge rule for table / calendar cells — when a strip holds 2+
+  // icons of the same type (photos, notes, DRC, links) they collapse into one
+  // icon carrying a count badge. Click / right-click lists the originals; each
+  // row triggers the original icon's own click, so nothing becomes unreachable.
+  function cellIconTypeKey(el) {
+    const cl = el.classList;
+    if (cl.contains("node-table-cell-add")) return null;
+    if (cl.contains("calendar-retained-icon")) {
+      const t = el.textContent.trim();
+      if (t === "🖼") return "photo";
+      if (t === "📝" || t === "☑") return "note";
+      if (t === "📋") return "drc";
+      if (t === "🔗" || t === "▶") return "link";
+      return null;
+    }
+    if (cl.contains("node-table-cell-photo") || cl.contains("calendar-summary-date-photo")) return "photo";
+    if (cl.contains("node-table-cell-drc")) return "drc";
+    if (cl.contains("node-table-cell-note")) return "note";
+    if (cl.contains("node-table-cell-link")) return "link";
+    return null;
+  }
+  function collapseSameTypeIcons(strip) {
+    if (!strip) return strip;
+    const groups = new Map();
+    Array.from(strip.children).forEach((el) => {
+      const key = cellIconTypeKey(el);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(el);
+    });
+    const LABELS = { photo: "Photos", note: "Notes", drc: "DRC", link: "Links" };
+    groups.forEach((members, key) => {
+      if (members.length < 2) return;
+      const first = members[0];
+      const total = members.reduce((sum, m) => {
+        const b = m.querySelector(":scope > .node-marker-count");
+        const n = b ? parseInt(b.textContent, 10) : 1;
+        return sum + (Number.isFinite(n) ? n : 1);
+      }, 0);
+      const stand = document.createElement("span");
+      stand.className = first.className.replace(/\bcalendar-summary-date-(photo|link)\b/g, "").trim();
+      if (key === "link") stand.innerHTML = LINK_ICON_SVGS.link;
+      else if (first.classList.contains("calendar-retained-icon")) stand.textContent = first.textContent;
+      else stand.innerHTML = first.innerHTML.replace(/<span class="node-marker-count">[^<]*<\/span>/g, "");
+      if (first.style.backgroundImage) stand.style.backgroundImage = first.style.backgroundImage;
+      stand.draggable = false;
+      stand.title = `${total} ${LABELS[key].toLowerCase()} — click to see the list`;
+      const badge = document.createElement("span");
+      badge.className = "node-marker-count";
+      badge.textContent = String(total);
+      stand.appendChild(badge);
+      const openList = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resetContextMenu();
+        const header = document.createElement("div");
+        header.className = "ctx-item ctx-item-header";
+        header.style.cursor = "default";
+        const hl = document.createElement("span");
+        hl.className = "ctx-item-label";
+        hl.textContent = `${LABELS[key]} (${total})`;
+        header.appendChild(hl);
+        ctxMenu.appendChild(header);
+        members.forEach((m, idx) => {
+          const row = document.createElement("div");
+          row.className = "ctx-item";
+          const lab = document.createElement("span");
+          lab.className = "ctx-item-label";
+          const t = (m.title || "").replace(/ — (drag|click|right-click|retained).*$/i, "").trim();
+          lab.textContent = t || `${LABELS[key]} ${idx + 1}`;
+          row.title = m.title || "";
+          row.appendChild(lab);
+          row.addEventListener("click", () => { closeContextMenu(); m.dispatchEvent(new MouseEvent("click", { bubbles: false, cancelable: true })); });
+          ctxMenu.appendChild(row);
+        });
+        positionContextMenu(e.clientX, e.clientY);
+      };
+      stand.addEventListener("click", openList);
+      stand.addEventListener("contextmenu", openList);
+      stand.addEventListener("mousedown", (e) => e.stopPropagation());
+      strip.insertBefore(stand, first);
+      members.forEach((m) => m.remove());
+    });
+    return strip;
+  }
+
   function buildCellIconStrip(node, r, c) {
     const a = getCellAttach(node, r, c);
     const strip = document.createElement("div");
@@ -14596,7 +14682,7 @@
     // single thumbnail to remove just that one.
     const cellImages = getCellPhotos(a);
     if (cellImages.length) {
-      const overflow = cellImages.length > 4;
+      const overflow = cellImages.length > 1;
       const shownCount = overflow ? 1 : cellImages.length;
       for (let i = 0; i < shownCount; i++) {
         const thumb = document.createElement("span");
@@ -15146,7 +15232,7 @@
           else pasteUrlOntoCell(node.id, r, c, url);
         });
         td.appendChild(textEl);
-        td.appendChild(buildCellIconStrip(node, r, c));
+        td.appendChild(collapseSameTypeIcons(buildCellIconStrip(node, r, c)));
         const scoreBadge = buildCellScoreBadge(node, r, c, a);
         if (scoreBadge) td.appendChild(scoreBadge);
         tr.appendChild(td);
@@ -32383,6 +32469,9 @@ function closeSubtaskFocusMode() {
           });
         }
       }
+
+      // v805: 2+ same-type icons on one date (across all its cells) -> one badge icon.
+      collapseSameTypeIcons(cell.querySelector(".calendar-summary-icon-strip"));
 
       // v571: Task Lists in the summary Calendar are represented by the
       // modern score badge above. Do not also render the legacy per-task
