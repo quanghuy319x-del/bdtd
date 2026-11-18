@@ -27117,14 +27117,26 @@
     e.preventDefault();
 
     if (range.collapsed) noteEscapeConflictingMode(range, mode);
+    // Typing "->" turns into an arrow: when ">" is typed right after a "-" in the
+    // same text run, drop the "-" and insert "→" instead.
+    let insertText = data;
+    if (source === ">" && range.collapsed) {
+      const c = range.startContainer, o = range.startOffset;
+      if (c.nodeType === Node.TEXT_NODE && o > 0 && c.data.charAt(o - 1) === "-") {
+        c.deleteData(o - 1, 1);
+        range.setStart(c, o - 1);
+        range.collapse(true);
+        insertText = "\u2192";
+      }
+    }
     const existing = range.collapsed && noteModeElementForNode(range.startContainer, noteTextarea);
     // Reuse a same-mode carrier: no F-inside-F opacity stacking, and no
     // extra wrappers per character, even when users type extremely fast.
     if (existing?.mode === mode && range.collapsed &&
         range.startContainer.nodeType === Node.TEXT_NODE) {
       const node = range.startContainer, offset = range.startOffset;
-      node.insertData(offset, data);
-      range.setStart(node, offset + data.length);
+      node.insertData(offset, insertText);
+      range.setStart(node, offset + insertText.length);
     } else {
       range.deleteContents();
       const carrier = document.createElement("span");
@@ -27133,7 +27145,7 @@
         carrier.classList.add("note-fade-text");
         carrier.setAttribute("data-note-fade", "1");
       }
-      const text = document.createTextNode(data);
+      const text = document.createTextNode(insertText);
       carrier.appendChild(text);
       range.insertNode(carrier);
       range.setStart(text, text.length);
