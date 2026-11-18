@@ -12012,7 +12012,7 @@ body.signed-out #mindmap-list{display:none!important}
 /* Phone / base */
 #calendar-modal #calendar-grid .calendar-summary-icon-strip{
   --fix-icon:calc(var(--cal-icon-size, 12cqw) * .8);
-  --fix-count:calc(var(--cal-count-size, 6.5cqw) * 1.7);
+  --fix-count:calc(var(--cal-count-size, 6.5cqw) * 1.3);
   --fix-pad:calc(var(--fix-count) * .5);
   padding-top:var(--fix-pad)!important;
   padding-right:var(--fix-pad)!important;
@@ -12038,7 +12038,7 @@ body.signed-out #mindmap-list{display:none!important}
 @media (min-width:641px){
   #calendar-modal #calendar-grid .calendar-summary-icon-strip{
     --fix-icon:calc(var(--cal-child-icon, 20cqw) * .8);
-    --fix-count:calc(var(--cal-child-icon, 20cqw) * .95);
+    --fix-count:calc(var(--cal-child-icon, 20cqw) * .7);
     --fix-pad:calc(var(--fix-count) * .5);
   }
 }
