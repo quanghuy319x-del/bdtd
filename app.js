@@ -10391,7 +10391,7 @@
           getPhotos: () => getLinkPhotos(findNode(nodeId) || node, u),
           addPhoto: (dataUrl) => addLinkPhoto(findNode(nodeId) || node, u, dataUrl),
           removePhoto: (id) => removeLinkPhoto(findNode(nodeId) || node, u, id),
-        });
+        }, { getUrls: () => getNodeUrls(findNode(nodeId) || node) });
       });
       it.appendChild(labelSpan);
       const rename = document.createElement("span");
@@ -14917,7 +14917,7 @@
         getPhotos: () => getCellLinkPhotos(getCellAttach(node, r, c), u),
         addPhoto: (dataUrl) => addCellLinkPhoto(getCellAttach(node, r, c), u, dataUrl),
         removePhoto: (id) => removeCellLinkPhoto(getCellAttach(node, r, c), u, id),
-      }));
+      }, { getUrls: () => getCellUrls(getCellAttach(node, r, c)) }));
       linkIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c }));
       armMarkerTouchDrag(linkIcon, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c });
       linkIcon.addEventListener("dragend", endMarkerDrag);
@@ -15921,7 +15921,7 @@
               getPhotos: () => getLinkPhotos(findNode(node.id) || node, u),
               addPhoto: (dataUrl) => addLinkPhoto(findNode(node.id) || node, u, dataUrl),
               removePhoto: (id) => removeLinkPhoto(findNode(node.id) || node, u, id),
-            });
+            }, { getUrls: () => getNodeUrls(findNode(node.id) || node) });
           });
         }
         urlIcon.addEventListener("contextmenu", (e) => {
@@ -20142,13 +20142,131 @@
   // link's comment (see getLinkComment/setLinkComment and their cell
   // equivalents), letting the modal's comment box read and save without
   // knowing whether the link lives on a node or inside a table cell.
-  function openLinkSmart(url, commentCtx) {
+  function openLinkSmart(url, commentCtx, listCtx) {
     const ytId = youtubeVideoId(url);
     if (!ytId) {
-      openUrlAsPopup(url);
+      // v815: a link from a node/cell link list opens in one reusable popup
+      // with a floating ‹ Prev / Next › bar to step through the list.
+      if (listCtx && typeof listCtx.getUrls === "function") openLinkInNavPopup(url, listCtx);
+      else openUrlAsPopup(url);
       return;
     }
     openVideoModal(url, ytId, commentCtx);
+  }
+
+  // ---- v815: Prev / Next through a link list in ONE popup window ----------
+  // The popup shows another site (e.g. Google Photos), so buttons can't live
+  // inside it. Instead the app shows a small floating bar (‹ 3/60 ›) and
+  // reuses a single named popup window, navigating it to the previous/next
+  // link in the node's (or cell's) list. YouTube links are skipped because
+  // they use the in-app player instead.
+  let linkNavWin = null;
+  let linkNavCtx = null;   // { getUrls }
+  let linkNavIndex = -1;
+  let linkNavBar = null;
+  let linkNavTimer = null;
+
+  function linkNavUrls() {
+    const all = (linkNavCtx && linkNavCtx.getUrls && linkNavCtx.getUrls()) || [];
+    return all.filter(u => !youtubeVideoId(u));
+  }
+
+  function linkNavNavigate(url) {
+    const features = (() => {
+      const mmW = window.outerWidth || screen.width;
+      const mmH = window.outerHeight || screen.height;
+      const w = Math.round(clamp(mmW * 0.5, 480, Math.max(480, mmW - 80)));
+      const h = Math.round(clamp(mmH * 0.5, 360, Math.max(360, mmH - 80)));
+      const left = Math.max(0, Math.round((window.screenX || 0) + (mmW - w) / 2));
+      const top = Math.max(0, Math.round((window.screenY || 0) + (mmH - h) / 2));
+      return `width=${w},height=${h},left=${left},top=${top},toolbar=yes,location=yes`;
+    })();
+    try {
+      if (linkNavWin && !linkNavWin.closed) {
+        linkNavWin.location.href = url;
+        try { linkNavWin.focus(); } catch (e) {}
+        return true;
+      }
+    } catch (e) { /* fall through and reopen */ }
+    // Open blank first (still same-origin), cut the opener link so the page
+    // we navigate to can never reach back into this app, then navigate.
+    const w = window.open("", "mindmap-link-popup", features);
+    if (!w) return false;
+    try { w.opener = null; } catch (e) {}
+    try { w.location.href = url; } catch (e) { return false; }
+    linkNavWin = w;
+    return true;
+  }
+
+  function ensureLinkNavBar() {
+    if (linkNavBar) return linkNavBar;
+    const bar = document.createElement("div");
+    bar.id = "link-nav-bar";
+    bar.className = "link-nav-bar hidden";
+    bar.innerHTML =
+      '<button type="button" class="link-nav-btn" data-dir="-1" title="Previous link" aria-label="Previous link">‹</button>' +
+      '<span class="link-nav-count"></span>' +
+      '<button type="button" class="link-nav-btn" data-dir="1" title="Next link" aria-label="Next link">›</button>' +
+      '<button type="button" class="link-nav-btn link-nav-close" title="Close link navigator" aria-label="Close link navigator">✕</button>';
+    bar.addEventListener("mousedown", (e) => e.stopPropagation());
+    bar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    bar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.classList.contains("link-nav-close")) { hideLinkNavBar(); return; }
+      linkNavStep(Number(b.dataset.dir) || 0);
+    });
+    document.body.appendChild(bar);
+    linkNavBar = bar;
+    return bar;
+  }
+
+  function renderLinkNavBar() {
+    const bar = ensureLinkNavBar();
+    const urls = linkNavUrls();
+    const n = urls.length;
+    bar.querySelector(".link-nav-count").textContent = (linkNavIndex + 1) + " / " + n;
+    const [prev, next] = bar.querySelectorAll(".link-nav-btn[data-dir]");
+    prev.disabled = linkNavIndex <= 0;
+    next.disabled = linkNavIndex >= n - 1;
+    bar.classList.remove("hidden");
+  }
+
+  function hideLinkNavBar() {
+    if (linkNavBar) linkNavBar.classList.add("hidden");
+    if (linkNavTimer) { clearInterval(linkNavTimer); linkNavTimer = null; }
+    linkNavCtx = null;
+    linkNavIndex = -1;
+  }
+
+  function linkNavStep(dir) {
+    const urls = linkNavUrls();
+    const i = linkNavIndex + dir;
+    if (i < 0 || i >= urls.length) return;
+    if (!linkNavNavigate(urls[i])) return;
+    linkNavIndex = i;
+    renderLinkNavBar();
+  }
+
+  function openLinkInNavPopup(url, listCtx) {
+    linkNavCtx = listCtx;
+    const urls = linkNavUrls();
+    const idx = urls.indexOf(url);
+    if (urls.length < 2 || idx < 0) {
+      // Nothing to step through: behave exactly like before.
+      hideLinkNavBar();
+      openUrlAsPopup(url);
+      return;
+    }
+    if (!linkNavNavigate(url)) return;
+    linkNavIndex = idx;
+    renderLinkNavBar();
+    if (linkNavTimer) clearInterval(linkNavTimer);
+    // Hide the bar once the popup window is closed.
+    linkNavTimer = setInterval(() => {
+      if (!linkNavWin || linkNavWin.closed) { linkNavWin = null; hideLinkNavBar(); }
+    }, 1000);
   }
 
   // Opens a URL in its own sized, centered browser window rather than a

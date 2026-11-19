@@ -12118,3 +12118,40 @@ body.signed-out #mindmap-list{display:none!important}
   justify-content: center;
   max-width: 92vw;
 }
+
+
+/* v815 — floating Prev / Next bar for stepping through a link list in the popup window. */
+.link-nav-bar{
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 3000000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--panel-2, #1c1f2b);
+  border: 1px solid var(--border, rgba(255,255,255,.2));
+  box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  color: var(--text, #fff);
+  font-size: 13px;
+  user-select: none;
+}
+.link-nav-bar.hidden{ display: none; }
+.link-nav-count{ min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; }
+.link-nav-btn{
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border, rgba(255,255,255,.25));
+  background: var(--panel, #12141c);
+  color: var(--text, #fff);
+  font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  padding: 0 0 2px;
+}
+.link-nav-btn:hover:not(:disabled){ border-color: var(--accent); color: var(--accent); }
+.link-nav-btn:disabled{ opacity: .35; cursor: default; }
+.link-nav-close{ font-size: 13px; padding: 0; }
