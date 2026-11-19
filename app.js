@@ -15459,6 +15459,14 @@
         if (!items) return;
         const imageItem = Array.from(items).find(i => i.type && i.type.startsWith("image/"));
         if (!imageItem) {
+          // v814: a list of links -> attach them all to this node as links.
+          const urlList = pasteableUrlListFromClipboard(e.clipboardData);
+          if (urlList) {
+            e.preventDefault();
+            commitEdit(div, { render: false });
+            pasteUrlsOntoNode(node.id, urlList);
+            return;
+          }
           // Multi-line indented text -> a tree of child nodes under this node.
           const outline = parseIndentedOutline(e.clipboardData.getData("text/plain"));
           if (!outline) return;
@@ -20469,6 +20477,70 @@
     return pasteableUrlFromClipboardHtml(cd.getData("text/html"));
   }
 
+  // v814: several links pasted at once (one per line / space-separated, e.g. a
+  // list of Google Photos links). Only when EVERY token is a valid URL, so a
+  // sentence or an indented outline that merely contains links still falls
+  // through to the normal paste behaviour. Returns an array of >=2 unique URLs
+  // or null.
+  function pasteableUrlListFromClipboard(cd) {
+    if (!cd) return null;
+    const text = cd.getData("text/plain") || cd.getData("text/uri-list") || "";
+    const tokens = text.split(/\s+/).map(t => t.trim()).filter(t => t && !t.startsWith("#"));
+    if (tokens.length < 2 || tokens.length > 2000) return null;
+    const out = [];
+    for (const t of tokens) {
+      const u = validatePasteableUrl(t);
+      if (!u) return null;
+      if (!out.includes(u)) out.push(u);
+    }
+    return out.length >= 2 ? out : null;
+  }
+
+  // Adds many URLs to a node in ONE undo step / ONE render. Links already on
+  // the node are skipped. Title fetching is only attempted for small batches
+  // (it can't work for most sites anyway and would fire dozens of requests).
+  function pasteUrlsOntoNode(nodeId, urlList) {
+    const node = findNode(nodeId);
+    if (!node || !urlList || !urlList.length) return 0;
+    const existing = getNodeUrls(node).slice();
+    const fresh = urlList.filter(u => !existing.includes(u));
+    if (!fresh.length) return 0;
+    pushUndo();
+    const now = Date.now();
+    fresh.forEach((u, i) => {
+      existing.push(u);
+      setLinkTimestamp(node, u, now + i);
+    });
+    node.urls = existing;
+    node.url = null;
+    renderAll();
+    persist();
+    if (fresh.length <= 5) fresh.forEach(u => fetchLinkTitle(node, u));
+    return fresh.length;
+  }
+
+  // Same, scoped to one table cell.
+  function pasteUrlsOntoCell(nodeId, r, c, urlList) {
+    const node = findNode(nodeId);
+    if (!node || !urlList || !urlList.length) return 0;
+    const a = getCellAttach(node, r, c);
+    const existing = getCellUrls(a).slice();
+    const fresh = urlList.filter(u => !existing.includes(u));
+    if (!fresh.length) return 0;
+    pushUndo();
+    const now = Date.now();
+    fresh.forEach((u, i) => {
+      existing.push(u);
+      setLinkTimestamp(a, u, now + i);
+    });
+    a.urls = existing;
+    a.url = null;
+    renderAll();
+    persist();
+    if (fresh.length <= 5) fresh.forEach(u => fetchCellLinkTitle(nodeId, r, c, u));
+    return fresh.length;
+  }
+
   // Adds a URL straight onto a node with no prompts — the paste-shortcut
   // counterpart to addNodeUrl. Skips both of addNodeUrl's window.prompt
   // calls (there's nothing to prompt for: the URL is already known, and a
@@ -20589,6 +20661,20 @@
     const imageItem = Array.from(items).find(i => i.type && i.type.startsWith("image/"));
     const file = imageItem && imageItem.getAsFile();
     const url = !file ? pasteableUrlFromClipboard(e.clipboardData) : null;
+    // v814: multiple links pasted at once -> add them all as link markers.
+    const urlList = (!file && !url) ? pasteableUrlListFromClipboard(e.clipboardData) : null;
+    if (urlList) {
+      if (state.selectedCell) {
+        e.preventDefault();
+        pasteUrlsOntoCell(state.selectedCell.nodeId, state.selectedCell.r, state.selectedCell.c, urlList);
+        return;
+      }
+      if (state.selectedId && !state.editingId) {
+        e.preventDefault();
+        pasteUrlsOntoNode(state.selectedId, urlList);
+        return;
+      }
+    }
     if (!file && !url && !state.selectedCell && !state.editingId) {
       const outline = parseIndentedOutline(e.clipboardData.getData("text/plain"));
       if (outline) {
