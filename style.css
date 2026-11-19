@@ -12060,3 +12060,37 @@ body.signed-out #mindmap-list{display:none!important}
   margin-left:0;
   margin-right:4px;
 }
+
+
+/* v812 — Photo viewer/editor: the toolbars (top: edit/status actions, bottom:
+   zoom/count) must never cover the photo. They stay pinned to the viewport,
+   and the card now reserves a clear band above and below for them, with the
+   photo sized to fit in what remains (tags row/comment box sit beneath it). */
+#photo-modal{
+  --pm-top: 56px;      /* top toolbar band */
+  --pm-bottom: 56px;   /* bottom toolbar band */
+  --pm-extra: 64px;    /* tags row + gaps under the photo */
+}
+#photo-modal .photo-modal-card{
+  box-sizing: border-box;
+  max-height: 100vh;
+  max-height: 100dvh;
+  padding: var(--pm-top) 0 var(--pm-bottom);
+  overflow: visible;
+}
+#photo-modal .photo-modal-card img{
+  max-height: calc(100vh - var(--pm-top) - var(--pm-bottom) - var(--pm-extra));
+  max-height: calc(100dvh - var(--pm-top) - var(--pm-bottom) - var(--pm-extra));
+}
+#photo-modal .photo-modal-toolbar-top{
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 92vw;
+}
+@media (max-width:640px){
+  #photo-modal{ --pm-top: calc(var(--app-mobile-header-space, 0px) + 56px); }
+}
+/* Very narrow phones: the top toolbar can wrap onto a second row. */
+@media (max-width:420px){
+  #photo-modal{ --pm-top: calc(var(--app-mobile-header-space, 0px) + 96px); }
+}
