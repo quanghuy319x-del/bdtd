@@ -12042,3 +12042,21 @@ body.signed-out #mindmap-list{display:none!important}
     --fix-pad:calc(var(--fix-count) * .5);
   }
 }
+
+
+/* v811 — The collapsed children-count badge grows with its number, so it must
+   sit fully OUTSIDE the node's edge instead of straddling it (it used to
+   spill over the node text). Right-side nodes: badge to the right; left-side
+   nodes (.node-collapse-left): badge to the left. */
+.node-collapse.node-collapse-count{
+  left:100%!important;
+  right:auto!important;
+  margin-left:4px;
+  margin-right:0;
+}
+.node-collapse.node-collapse-count.node-collapse-left{
+  left:auto!important;
+  right:100%!important;
+  margin-left:0;
+  margin-right:4px;
+}

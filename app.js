@@ -15562,6 +15562,7 @@
       if (depth > 0 && node._x < 0) {
         toggle.style.right = "auto";
         toggle.style.left = "-9px";
+        toggle.classList.add("node-collapse-left");
       }
       if (node.collapsed) {
         // Collapsed: the toggle doubles as the child-count badge — the
