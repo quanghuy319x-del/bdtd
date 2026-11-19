@@ -12094,3 +12094,27 @@ body.signed-out #mindmap-list{display:none!important}
 @media (max-width:420px){
   #photo-modal{ --pm-top: calc(var(--app-mobile-header-space, 0px) + 96px); }
 }
+
+
+/* v813 — Root cause of the buttons still landing on the photo: the card keeps
+   a non-"none" transform (translate/scale from the open animation), which
+   makes every position:fixed toolbar inside it anchor to the CARD instead of
+   the screen. A small photo = a narrow card = a toolbar squeezed into two rows
+   sitting on top of the image. Drop the resting transform so the toolbars are
+   truly pinned to the viewport, keep the Back button clear of the top toolbar,
+   and reserve room for the toolbar wrapping to two rows on narrow screens. */
+#photo-modal:not(.modal-zoom-init) .photo-modal-card{
+  transform: none;
+}
+#photo-modal .photo-modal-toolbar-top{
+  left: calc(4vw + 24px);
+  right: calc(4vw - 16px);
+  max-width: none;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+#photo-modal .photo-modal-toolbar-bottom{
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 92vw;
+}
