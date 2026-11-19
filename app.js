@@ -20188,6 +20188,10 @@
         return true;
       }
     } catch (e) { /* fall through and reopen */ }
+    // Handle is gone (or severed by the site's COOP header): close the old
+    // popup if we still can, then open the next one in the same spot so it
+    // lands right on top of the previous one.
+    try { if (linkNavWin) linkNavWin.close(); } catch (e) {}
     // Open blank first (still same-origin), cut the opener link so the page
     // we navigate to can never reach back into this app, then navigate.
     const w = window.open("", "mindmap-link-popup", features);
@@ -20233,6 +20237,19 @@
     bar.classList.remove("hidden");
   }
 
+  document.addEventListener("keydown", (e) => {
+    if (!linkNavBar || linkNavBar.classList.contains("hidden")) return;
+    if (e.key === "Escape") { hideLinkNavBar(); return; }
+    // v816: "]" = next link, "[" = previous link (while the bar is showing and
+    // you're not typing). Lets an OS-level helper script (see
+    // link-popup-helper.ahk) close the old popup and then step the list.
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "]") { e.preventDefault(); linkNavStep(1); }
+    else if (e.key === "[") { e.preventDefault(); linkNavStep(-1); }
+  });
+
   function hideLinkNavBar() {
     if (linkNavBar) linkNavBar.classList.add("hidden");
     if (linkNavTimer) { clearInterval(linkNavTimer); linkNavTimer = null; }
@@ -20262,11 +20279,11 @@
     if (!linkNavNavigate(url)) return;
     linkNavIndex = idx;
     renderLinkNavBar();
-    if (linkNavTimer) clearInterval(linkNavTimer);
-    // Hide the bar once the popup window is closed.
-    linkNavTimer = setInterval(() => {
-      if (!linkNavWin || linkNavWin.closed) { linkNavWin = null; hideLinkNavBar(); }
-    }, 1000);
+    // NOTE: the bar deliberately stays until the user presses ✕ (or Esc).
+    // Sites like Google Photos send Cross-Origin-Opener-Policy headers that
+    // sever our handle to the popup, after which window.closed reads "true"
+    // right away — so "popup closed" can't be detected reliably.
+    if (linkNavTimer) { clearInterval(linkNavTimer); linkNavTimer = null; }
   }
 
   // Opens a URL in its own sized, centered browser window rather than a
@@ -20518,6 +20535,7 @@
       reader.readAsDataURL(file);
     });
   }
+
 
   nodeImageInput.addEventListener("change", () => {
     if (nodeImageInput.files && nodeImageInput.files.length && pendingPhotoNodeId) {
@@ -32744,7 +32762,7 @@ function closeSubtaskFocusMode() {
                 getPhotos: () => getLinkPhotos(calendarDatePhotoHost(iso, false), url),
                 addPhoto: dataUrl => addLinkPhoto(calendarDatePhotoHost(iso, false), url, dataUrl),
                 removePhoto: id => removeLinkPhoto(calendarDatePhotoHost(iso, false), url, id)
-              });
+              }, { getUrls: () => getNodeUrls(calendarDatePhotoHost(iso, false) || host) });
             });
             icon.addEventListener("contextmenu", e => {
               e.preventDefault();
@@ -36336,7 +36354,7 @@ function closeSubtaskFocusMode() {
           getPhotos: () => getLinkPhotos(liveHost(), item.url),
           addPhoto: (dataUrl) => addLinkPhoto(liveHost(), item.url, dataUrl),
           removePhoto: (id) => removeLinkPhoto(liveHost(), item.url, id),
-        });
+        }, { getUrls: () => (item.r != null ? getCellUrls(liveHost()) : getNodeUrls(liveHost())) });
       }
     });
   }
