@@ -34580,8 +34580,8 @@ function closeSubtaskFocusMode() {
   const mindmapModal = $("#mindmap-modal");
   const mindmapCanvas = $("#mindmap-canvas");
   const mindmapTitleEl = $("#mindmap-title");
-  const MM_W = 150, MM_H = 36, MM_GAP_X = 56, MM_GAP_Y = 12, MM_PAD = 24;
-  const MM_COLORS = ["#4a72b5", "#e0703f", "#2e9e92", "#9c4fb0", "#c98a3a", "#5a8f5a", "#d0457a", "#2f8fc4"];
+  const MM_W = 190, MM_H = 24, MM_GAP_X = 26, MM_GAP_Y = 4, MM_PAD = 12;
+  const MM_COLORS = ["#6F94CC", "#F39236", "#E84D42", "#0BC09C", "#499FE0", "#756BD1", "#E86BB8", "#F2C94C", "#5DBB63", "#C46DD1"];
   let mmCtx = null, mmSelectedId = null, mmEditingId = null;
 
   function mindmapCountNodes(n) {
@@ -34609,21 +34609,65 @@ function closeSubtaskFocusMode() {
     }
     return null;
   }
+  let mmMeasureCtx = null;
+  function mmLineCount(text) {
+    if (!mmMeasureCtx) {
+      mmMeasureCtx = document.createElement("canvas").getContext("2d");
+      mmMeasureCtx.font = "13px system-ui, sans-serif";
+    }
+    const maxW = MM_W - 16;
+    let lines = 0;
+    String(text || "").split("\n").forEach((para) => {
+      let cur = "";
+      lines++;
+      para.split(/\s+/).filter(Boolean).forEach((word) => {
+        const trial = cur ? cur + " " + word : word;
+        if (mmMeasureCtx.measureText(trial).width <= maxW) { cur = trial; return; }
+        if (cur) { lines++; cur = ""; }
+        // very long word: break it by characters
+        let chunk = "";
+        for (const ch of word) {
+          if (mmMeasureCtx.measureText(chunk + ch).width > maxW && chunk) { lines++; chunk = ch; }
+          else chunk += ch;
+        }
+        cur = chunk;
+      });
+    });
+    return Math.max(1, lines);
+  }
+  function mmNodeWidth(text) {
+    mmLineCount(text); // ensures ctx
+    let w = 0;
+    String(text || "").split("\n").forEach((l) => { w = Math.max(w, mmMeasureCtx.measureText(l).width); });
+    return Math.min(MM_W, Math.max(48, Math.ceil(w) + 16));
+  }
+  function mmNodeHeight(text) {
+    return Math.max(MM_H, mmLineCount(text) * 16 + 8);
+  }
   function mmLayout(root) {
     const pos = new Map();
-    let leaf = 0;
+    let cursor = 0;
     const walk = (n, depth, branch) => {
+      const h = mmNodeHeight(n.text);
       const kids = n.collapsed ? [] : (n.children || []);
-      let y;
-      if (!kids.length) y = (leaf++) * (MM_H + MM_GAP_Y);
+      let cy;
+      if (!kids.length) { cy = cursor + h / 2; cursor += h + MM_GAP_Y; }
       else {
-        const ys = kids.map((k, i) => walk(k, depth + 1, depth === 0 ? i : branch));
-        y = (ys[0] + ys[ys.length - 1]) / 2;
+        const cys = kids.map((k, i) => walk(k, depth + 1, depth === 0 ? i : branch));
+        cy = (cys[0] + cys[cys.length - 1]) / 2;
       }
-      pos.set(n.id, { x: depth * (MM_W + MM_GAP_X), y, depth, branch, n });
-      return y;
+      pos.set(n.id, { x: depth * (MM_W + MM_GAP_X), y: cy - h / 2, h, w: mmNodeWidth(n.text), depth, branch, n });
+      return cy;
     };
     walk(root, 0, 0);
+    const colW = [];
+    pos.forEach((p) => { colW[p.depth] = Math.max(colW[p.depth] || 0, p.w); });
+    const colX = [0];
+    for (let d = 1; d < colW.length; d++) colX[d] = colX[d - 1] + colW[d - 1] + MM_GAP_X;
+    pos.forEach((p) => { p.x = colX[p.depth]; });
+    let minY = Infinity;
+    pos.forEach((p) => { minY = Math.min(minY, p.y); });
+    pos.forEach((p) => { p.y -= minY; });
     return pos;
   }
   function openMindmapModal(nodeId, r, c) {
@@ -34636,14 +34680,14 @@ function closeSubtaskFocusMode() {
     if (!mindmapHasContent(host)) {
       const isCell = mmCtx.r != null;
       host.mindmap = {
-        root: { id: uid(), text: isCell ? "Mindmap" : (String(node.text || "").trim().slice(0, 60) || "Mindmap"), auto: true, children: [] },
+        root: { id: uid(), text: isCell ? "Mindmap" : (String(node.text || "").trim() || "Mindmap"), auto: true, children: [] },
         updatedAt: Date.now()
       };
     }
     mmSelectedId = host.mindmap.root.id;
     mmEditingId = null;
     if (mindmapTitleEl) {
-      mindmapTitleEl.textContent = "🗺️ Mindmap — " + (String(node.text || "").trim().slice(0, 40) || "node") +
+      mindmapTitleEl.textContent = "🗺️ Mindmap — " + (String(node.text || "").trim() || "node") +
         (mmCtx.r != null ? ` (cell ${mmCtx.r + 1},${mmCtx.c + 1})` : "");
     }
     mmRender();
@@ -34733,20 +34777,23 @@ function closeSubtaskFocusMode() {
     if (!f) return;
     mmEditingId = id;
     el.classList.add("editing");
-    const input = document.createElement("input");
+    const input = document.createElement("textarea");
     input.className = "mm-input";
+    input.rows = 1;
     input.value = f.n.text || "";
-    input.maxLength = 120;
+    const fit = () => { input.style.height = "auto"; input.style.height = input.scrollHeight + "px"; el.style.height = "auto"; el.style.minHeight = (input.scrollHeight + 8) + "px"; };
+    input.addEventListener("input", fit);
     el.textContent = "";
     el.appendChild(input);
     input.focus();
     input.select();
+    fit();
     let done = false;
     const finish = (commit) => {
       if (done) return;
       done = true;
       mmEditingId = null;
-      const val = input.value.trim();
+      const val = input.value.replace(/\s*\n\s*/g, " ").trim();
       if (commit && val && val !== f.n.text) {
         mmMutate((m) => { const ff = mmFind(m.root, id); ff.n.text = val; ff.n.auto = false; });
       } else mmRender();
@@ -34768,7 +34815,7 @@ function closeSubtaskFocusMode() {
     if (!mmFind(root, mmSelectedId)) mmSelectedId = root.id;
     const pos = mmLayout(root);
     let maxX = 0, maxY = 0;
-    pos.forEach((p) => { maxX = Math.max(maxX, p.x + MM_W); maxY = Math.max(maxY, p.y + MM_H); });
+    pos.forEach((p) => { maxX = Math.max(maxX, p.x + p.w); maxY = Math.max(maxY, p.y + p.h); });
     const W = maxX + MM_PAD * 2, H = maxY + MM_PAD * 2;
     const NS = "http://www.w3.org/2000/svg";
     const stage = document.createElement("div");
@@ -34786,8 +34833,8 @@ function closeSubtaskFocusMode() {
       kids.forEach((k) => {
         const q = pos.get(k.id);
         if (!q) return;
-        const x1 = MM_PAD + p.x + MM_W, y1 = MM_PAD + p.y + MM_H / 2;
-        const x2 = MM_PAD + q.x, y2 = MM_PAD + q.y + MM_H / 2;
+        const x1 = MM_PAD + p.x + p.w, y1 = MM_PAD + p.y + (p.depth === 0 ? p.h / 2 : p.h - 1);
+        const x2 = MM_PAD + q.x, y2 = MM_PAD + q.y + q.h - 1;
         const mx = (x1 + x2) / 2;
         const path = document.createElementNS(NS, "path");
         path.setAttribute("d", `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
@@ -34805,8 +34852,8 @@ function closeSubtaskFocusMode() {
       el.dataset.id = id;
       el.style.left = (MM_PAD + p.x) + "px";
       el.style.top = (MM_PAD + p.y) + "px";
-      el.style.width = MM_W + "px";
-      el.style.height = MM_H + "px";
+      el.style.width = p.w + "px";
+      el.style.height = p.h + "px";
       if (p.depth > 0) el.style.setProperty("--mm-color", MM_COLORS[p.branch % MM_COLORS.length]);
       const label = document.createElement("span");
       label.className = "mm-label";
