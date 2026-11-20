@@ -12238,3 +12238,17 @@ body.signed-out #mindmap-list{display:none!important}
 .mm-node{ padding:2px 6px 1px; line-height:16px; font-size:13px; border-bottom-width:2px; }
 .mm-node.mm-root{ padding:3px 10px; border-radius:12px; }
 .mm-input{ line-height:16px; }
+
+/* v813: smaller mindmap icon, especially on phones */
+.node-table-cell-mindmap svg{ width: 62%; height: 62%; }
+.node-mindmap-marker svg{ width: 62%; height: 62%; }
+.node-photo-strip.large .node-photo-thumb.node-mindmap-marker{ width: 14px; height: 14px; border-radius: 4px; }
+.node-photo-strip.large.inline .node-photo-thumb.node-mindmap-marker{ width: 13px; height: 13px; }
+#calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon.node-table-cell-mindmap{
+  width: calc(var(--fix-icon, 12cqw) * .55) !important;
+  height: calc(var(--fix-icon, 12cqw) * .55) !important;
+  min-width: calc(var(--fix-icon, 12cqw) * .55) !important;
+  flex: 0 0 calc(var(--fix-icon, 12cqw) * .55) !important;
+  border-radius: 3px !important;
+}
+#calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-mindmap svg{ width: 78%; height: 78%; }
