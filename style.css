@@ -12252,3 +12252,14 @@ body.signed-out #mindmap-list{display:none!important}
   border-radius: 3px !important;
 }
 #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-mindmap svg{ width: 78%; height: 78%; }
+
+/* v814: bigger mindmap window */
+.mindmap-modal-card{
+  width: min(1280px, 98vw);
+  height: min(860px, 94vh);
+  max-height: 94vh;
+}
+.mindmap-canvas{ flex: 1 1 auto; min-height: 0; }
+@media (max-width: 640px){
+  .mindmap-modal-card{ width: 100vw; height: 96vh; max-height: 96vh; border-radius: 12px; padding: 8px; }
+}
