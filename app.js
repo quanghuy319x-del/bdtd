@@ -14381,7 +14381,7 @@
     }
 
     addItem("🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c));
-    addItem(mindmapHasContent(a) ? `🗺️ Mindmap (${mindmapCount(a)})…` : "🗺️ Add mindmap…", () => openMindmapModal(node.id, r, c));
+    addItem(mindmapHasContent(a) ? `Mindmap (${mindmapCount(a)})…` : "Add mindmap…", () => openMindmapModal(node.id, r, c));
 
     const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
     addItem(drcFilled > 0 ? `📋 DRC (${drcFilled} filled in)…` : "📋 DRC…", () => openCellDRCModal(node, r, c));
@@ -14994,7 +14994,7 @@
     if (mindmapHasContent(a)) {
       const mIcon = document.createElement("span");
       mIcon.className = "node-table-cell-icon node-table-cell-mindmap";
-      mIcon.textContent = "🗺️";
+      mIcon.innerHTML = MINDMAP_ICON_SVG;
       mIcon.title = `Mindmap (${mindmapCount(a)} ideas) — click to open`;
       mIcon.addEventListener("click", (e) => { e.stopPropagation(); openMindmapModal(node.id, r, c); });
       strip.appendChild(mIcon);
@@ -16061,7 +16061,7 @@
       if (mindmapHasContent(node)) {
         const mIcon = document.createElement("span");
         mIcon.className = "node-photo-thumb node-mindmap-marker";
-        mIcon.textContent = "🗺️";
+        mIcon.innerHTML = MINDMAP_ICON_SVG;
         mIcon.title = `Mindmap (${mindmapCount(node)} ideas) — click to open`;
         mIcon.addEventListener("click", (e) => { e.stopPropagation(); openMindmapModal(node.id); });
         strip.appendChild(mIcon);
@@ -17692,7 +17692,7 @@
         addGroupRow("🧠 Brainstorm…", () => openBrainstormModal(node.id));
       }
       {
-        addGroupRow(mindmapHasContent(node) ? `🗺️ Mindmap (${mindmapCount(node)})…` : "🗺️ Add mindmap…", () => openMindmapModal(node.id));
+        addGroupRow(mindmapHasContent(node) ? `Mindmap (${mindmapCount(node)})…` : "Add mindmap…", () => openMindmapModal(node.id));
       }
       {
         // Shortcut: opens this node's DRC note, pre-filled with the
@@ -34576,11 +34576,12 @@ function closeSubtaskFocusMode() {
   // ===== v808: Mindmap inside any node or calendar cell =====================
   // Stored as host.mindmap = { root: { id, text, auto, collapsed, children: [] }, updatedAt }
   // where host is a node, or a table/calendar cell's attach object.
+  const MINDMAP_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6" fill="currentColor"/><path d="M10 11L5.5 7M14 11l4.5-4M10 13l-4.5 4M14 13l4.5 4"/><circle cx="4.5" cy="6" r="1.8"/><circle cx="19.5" cy="6" r="1.8"/><circle cx="4.5" cy="18" r="1.8"/><circle cx="19.5" cy="18" r="1.8"/></svg>';
   const mindmapModal = $("#mindmap-modal");
   const mindmapCanvas = $("#mindmap-canvas");
   const mindmapTitleEl = $("#mindmap-title");
   const MM_W = 150, MM_H = 36, MM_GAP_X = 56, MM_GAP_Y = 12, MM_PAD = 24;
-  const MM_COLORS = ["#7c9eff", "#ff8a65", "#4db6ac", "#ba68c8", "#ffd54f", "#81c784", "#f06292", "#4fc3f7"];
+  const MM_COLORS = ["#4a72b5", "#e0703f", "#2e9e92", "#9c4fb0", "#c98a3a", "#5a8f5a", "#d0457a", "#2f8fc4"];
   let mmCtx = null, mmSelectedId = null, mmEditingId = null;
 
   function mindmapCountNodes(n) {

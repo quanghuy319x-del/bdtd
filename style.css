@@ -12157,35 +12157,54 @@ body.signed-out #mindmap-list{display:none!important}
 .link-nav-close{ font-size: 13px; padding: 0; }
 
 
-/* v808: Mindmap inside a node or calendar cell */
+/* v808: Mindmap inside a node or calendar cell (light style) */
 .mindmap-modal-card{
   width:min(960px, 96vw); height:min(640px, 90vh); display:flex; flex-direction:column; gap:10px;
-  background:#1b1e26; color:#f2f3f7; padding:16px;
+  background:#ffffff; color:#2b2a25; padding:16px;
 }
+.mindmap-modal-card h2, .mindmap-modal-card .modal-back-btn{ color:#2b2a25; }
 .mindmap-toolbar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-.mindmap-count{ margin-left:auto; font-size:12px; opacity:.7; }
+.mindmap-toolbar .btn-ghost{ color:#2b2a25; border:1px solid #d5d8e0; background:#f5f6fa; }
+.mindmap-toolbar .btn-ghost.danger{ color:#b5504a; }
+.mindmap-count{ margin-left:auto; font-size:12px; color:#6b6f7a; }
 .mindmap-canvas{
   flex:1; min-height:0; overflow:auto; border-radius:10px;
-  background:#12141a; border:1px solid rgba(255,255,255,.08);
+  background:#fbfbfd; border:1px solid #e1e4ec;
 }
 .mm-stage{ position:relative; }
 .mm-lines{ position:absolute; left:0; top:0; pointer-events:none; }
 .mm-node{
   position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:6px;
   padding:0 10px; border-radius:10px; cursor:pointer; user-select:none;
-  background:#232733; color:#f2f3f7; border:2px solid var(--mm-color, #7c9eff);
+  background:#ffffff; color:#2b2a25; border:2px solid var(--mm-color, #4a72b5);
   font-size:13px; line-height:1.2;
 }
-.mm-node.mm-root{ background:#3a4a7a; border-color:#7c9eff; font-weight:600; }
-.mm-node.selected{ box-shadow:0 0 0 3px rgba(255,255,255,.55); }
+.mm-node.mm-root{ background:#e8eefc; border-color:#4a72b5; font-weight:600; }
+.mm-node.selected{ box-shadow:0 0 0 3px rgba(74,114,181,.35); }
 .mm-label{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mm-badge{
   flex:none; font-size:11px; padding:1px 6px; border-radius:999px;
-  background:rgba(255,255,255,.18); cursor:pointer;
+  background:#e6e8ef; color:#2b2a25; cursor:pointer;
 }
 .mm-input{
   width:100%; box-sizing:border-box; border:0; outline:0; background:transparent;
   color:inherit; font:inherit; padding:0;
 }
-.mindmap-hint{ margin:0; font-size:11px; opacity:.6; }
+.mindmap-hint{ margin:0; font-size:11px; color:#7c7c76; }
 .node-table-cell-mindmap, .node-mindmap-marker{ cursor:pointer; }
+
+/* v809: simple mindmap icon, same small tile as the brainstorm icon */
+.node-table-cell-mindmap{
+  background: rgba(74, 114, 181, 0.16);
+  border: 1px solid rgba(74, 114, 181, 0.45);
+  color: #4a72b5;
+}
+.node-table-cell-mindmap svg{ width: 80%; height: 80%; }
+.node-mindmap-marker{
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(74, 114, 181, 0.16);
+  border-color: rgba(74, 114, 181, 0.45);
+  color: #4a72b5;
+  font-size: 9px; line-height: 1;
+}
+.node-mindmap-marker svg{ width: 70%; height: 70%; }
