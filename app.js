@@ -8091,7 +8091,7 @@
     return a;
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec || (a.brainstorm && a.brainstorm.text)));
+    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec || (a.brainstorm && a.brainstorm.text) || mindmapHasContent(a)));
   }
   function cellAttachHasStripIcon(a) {
     // v410: tasks no longer render a second icon in the bottom strip.
@@ -8102,7 +8102,8 @@
       a.url || (a.urls && a.urls.length) ||
       (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) ||
       a.timePlayedSec ||
-      (a.brainstorm && a.brainstorm.text)
+      (a.brainstorm && a.brainstorm.text) ||
+      mindmapHasContent(a)
     ));
   }
 
@@ -14380,6 +14381,7 @@
     }
 
     addItem("🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c));
+    addItem(mindmapHasContent(a) ? `🗺️ Mindmap (${mindmapCount(a)})…` : "🗺️ Add mindmap…", () => openMindmapModal(node.id, r, c));
 
     const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
     addItem(drcFilled > 0 ? `📋 DRC (${drcFilled} filled in)…` : "📋 DRC…", () => openCellDRCModal(node, r, c));
@@ -14988,6 +14990,14 @@
       bIcon.addEventListener("dragend", endMarkerDrag);
       bIcon.addEventListener("click", () => openBrainstormModal(node.id, r, c));
       strip.appendChild(bIcon);
+    }
+    if (mindmapHasContent(a)) {
+      const mIcon = document.createElement("span");
+      mIcon.className = "node-table-cell-icon node-table-cell-mindmap";
+      mIcon.textContent = "🗺️";
+      mIcon.title = `Mindmap (${mindmapCount(a)} ideas) — click to open`;
+      mIcon.addEventListener("click", (e) => { e.stopPropagation(); openMindmapModal(node.id, r, c); });
+      strip.appendChild(mIcon);
     }
 
     // Calendar tables stay visually clean: cell actions are available
@@ -15637,7 +15647,8 @@
       + urlBucketCount(nodeUrls)
       + (affirmationWins ? 1 : 0)
       + (timePlayed ? 1 : 0)
-      + (nodeHasBrainstormMarker ? 1 : 0);
+      + (nodeHasBrainstormMarker ? 1 : 0)
+      + (mindmapHasContent(node) ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -16046,6 +16057,14 @@
           openBrainstormModal(node.id);
         });
         strip.appendChild(bIcon);
+      }
+      if (mindmapHasContent(node)) {
+        const mIcon = document.createElement("span");
+        mIcon.className = "node-photo-thumb node-mindmap-marker";
+        mIcon.textContent = "🗺️";
+        mIcon.title = `Mindmap (${mindmapCount(node)} ideas) — click to open`;
+        mIcon.addEventListener("click", (e) => { e.stopPropagation(); openMindmapModal(node.id); });
+        strip.appendChild(mIcon);
       }
 
       // v807: same-kind note icons from node notes, categories and tasks -> one badge icon.
@@ -17671,6 +17690,9 @@
       }
       {
         addGroupRow("🧠 Brainstorm…", () => openBrainstormModal(node.id));
+      }
+      {
+        addGroupRow(mindmapHasContent(node) ? `🗺️ Mindmap (${mindmapCount(node)})…` : "🗺️ Add mindmap…", () => openMindmapModal(node.id));
       }
       {
         // Shortcut: opens this node's DRC note, pre-filled with the
@@ -34549,6 +34571,304 @@ function closeSubtaskFocusMode() {
     }
     openNoteModal(nodeId, index);
   }
+
+
+  // ===== v808: Mindmap inside any node or calendar cell =====================
+  // Stored as host.mindmap = { root: { id, text, auto, collapsed, children: [] }, updatedAt }
+  // where host is a node, or a table/calendar cell's attach object.
+  const mindmapModal = $("#mindmap-modal");
+  const mindmapCanvas = $("#mindmap-canvas");
+  const mindmapTitleEl = $("#mindmap-title");
+  const MM_W = 150, MM_H = 36, MM_GAP_X = 56, MM_GAP_Y = 12, MM_PAD = 24;
+  const MM_COLORS = ["#7c9eff", "#ff8a65", "#4db6ac", "#ba68c8", "#ffd54f", "#81c784", "#f06292", "#4fc3f7"];
+  let mmCtx = null, mmSelectedId = null, mmEditingId = null;
+
+  function mindmapCountNodes(n) {
+    return 1 + (n.children || []).reduce((s, ch) => s + mindmapCountNodes(ch), 0);
+  }
+  function mindmapHasContent(host) {
+    const m = host && host.mindmap;
+    return !!(m && m.root && typeof m.root === "object");
+  }
+  function mindmapCount(host) {
+    return mindmapHasContent(host) ? mindmapCountNodes(host.mindmap.root) : 0;
+  }
+  function mmHost() {
+    if (!mmCtx) return null;
+    const node = findNode(mmCtx.nodeId);
+    if (!node) return null;
+    return (mmCtx.r != null && mmCtx.c != null && node.table)
+      ? getCellAttach(node, mmCtx.r, mmCtx.c) : node;
+  }
+  function mmFind(n, id, parent = null) {
+    if (n.id === id) return { n, parent };
+    for (const ch of (n.children || [])) {
+      const f = mmFind(ch, id, n);
+      if (f) return f;
+    }
+    return null;
+  }
+  function mmLayout(root) {
+    const pos = new Map();
+    let leaf = 0;
+    const walk = (n, depth, branch) => {
+      const kids = n.collapsed ? [] : (n.children || []);
+      let y;
+      if (!kids.length) y = (leaf++) * (MM_H + MM_GAP_Y);
+      else {
+        const ys = kids.map((k, i) => walk(k, depth + 1, depth === 0 ? i : branch));
+        y = (ys[0] + ys[ys.length - 1]) / 2;
+      }
+      pos.set(n.id, { x: depth * (MM_W + MM_GAP_X), y, depth, branch, n });
+      return y;
+    };
+    walk(root, 0, 0);
+    return pos;
+  }
+  function openMindmapModal(nodeId, r, c) {
+    if (!requireSignIn()) return;
+    const node = findNode(nodeId);
+    if (!node) return;
+    mmCtx = { nodeId, r: (r == null ? null : r), c: (c == null ? null : c) };
+    const host = mmHost();
+    if (!host) { mmCtx = null; return; }
+    if (!mindmapHasContent(host)) {
+      const isCell = mmCtx.r != null;
+      host.mindmap = {
+        root: { id: uid(), text: isCell ? "Mindmap" : (String(node.text || "").trim().slice(0, 60) || "Mindmap"), auto: true, children: [] },
+        updatedAt: Date.now()
+      };
+    }
+    mmSelectedId = host.mindmap.root.id;
+    mmEditingId = null;
+    if (mindmapTitleEl) {
+      mindmapTitleEl.textContent = "🗺️ Mindmap — " + (String(node.text || "").trim().slice(0, 40) || "node") +
+        (mmCtx.r != null ? ` (cell ${mmCtx.r + 1},${mmCtx.c + 1})` : "");
+    }
+    mmRender();
+    zoomModalOpen(mindmapModal);
+    mindmapModal.focus();
+  }
+  function closeMindmapModal() {
+    const ctx = mmCtx;
+    const host = mmHost();
+    if (host && host.mindmap) {
+      const root = host.mindmap.root;
+      if (!(root.children && root.children.length) && root.auto) { host.mindmap = null; persist(); }
+    }
+    mmCtx = null; mmEditingId = null;
+    zoomModalClose(mindmapModal);
+    if (ctx) {
+      refreshNodeOrRenderAll(ctx.nodeId);
+      if (calendarModal && !calendarModal.classList.contains("hidden")) renderCalendar();
+    }
+  }
+  function mmMutate(fn) {
+    const host = mmHost();
+    if (!host || !host.mindmap) return;
+    pushUndo();
+    fn(host.mindmap);
+    host.mindmap.updatedAt = Date.now();
+    persist();
+    mmRender();
+  }
+  function mmAddChild() {
+    const host = mmHost(); if (!host || !host.mindmap) return;
+    let newId = null;
+    mmMutate((m) => {
+      const f = mmFind(m.root, mmSelectedId) || { n: m.root };
+      const child = { id: uid(), text: "New idea", children: [] };
+      f.n.children = (f.n.children || []).concat([child]);
+      f.n.collapsed = false;
+      newId = child.id;
+    });
+    if (newId) { mmSelectedId = newId; mmRender(); mmStartRename(newId); }
+  }
+  function mmAddSibling() {
+    const host = mmHost(); if (!host || !host.mindmap) return;
+    const f = mmFind(host.mindmap.root, mmSelectedId);
+    if (!f || !f.parent) { mmAddChild(); return; }
+    let newId = null;
+    mmMutate((m) => {
+      const ff = mmFind(m.root, mmSelectedId);
+      const child = { id: uid(), text: "New idea", children: [] };
+      const i = ff.parent.children.findIndex(x => x.id === mmSelectedId);
+      ff.parent.children.splice(i + 1, 0, child);
+      newId = child.id;
+    });
+    if (newId) { mmSelectedId = newId; mmRender(); mmStartRename(newId); }
+  }
+  function mmDeleteSelected() {
+    const host = mmHost(); if (!host || !host.mindmap) return;
+    const f = mmFind(host.mindmap.root, mmSelectedId);
+    if (!f) return;
+    if (!f.parent) {
+      if (!confirm("Delete this whole mindmap?")) return;
+      pushUndo();
+      host.mindmap = null;
+      persist();
+      closeMindmapModal();
+      return;
+    }
+    const parentId = f.parent.id;
+    mmMutate((m) => {
+      const ff = mmFind(m.root, mmSelectedId);
+      ff.parent.children = ff.parent.children.filter(x => x.id !== mmSelectedId);
+    });
+    mmSelectedId = parentId;
+    mmRender();
+  }
+  function mmToggleCollapse() {
+    const host = mmHost(); if (!host || !host.mindmap) return;
+    const f = mmFind(host.mindmap.root, mmSelectedId);
+    if (!f || !(f.n.children || []).length) return;
+    mmMutate((m) => { const ff = mmFind(m.root, mmSelectedId); ff.n.collapsed = !ff.n.collapsed; });
+  }
+  function mmStartRename(id) {
+    const el = mindmapCanvas && mindmapCanvas.querySelector(`.mm-node[data-id="${id}"]`);
+    const host = mmHost();
+    if (!el || !host || !host.mindmap) return;
+    const f = mmFind(host.mindmap.root, id);
+    if (!f) return;
+    mmEditingId = id;
+    el.classList.add("editing");
+    const input = document.createElement("input");
+    input.className = "mm-input";
+    input.value = f.n.text || "";
+    input.maxLength = 120;
+    el.textContent = "";
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      mmEditingId = null;
+      const val = input.value.trim();
+      if (commit && val && val !== f.n.text) {
+        mmMutate((m) => { const ff = mmFind(m.root, id); ff.n.text = val; ff.n.auto = false; });
+      } else mmRender();
+      if (mindmapModal) mindmapModal.focus();
+    };
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      else if (e.key === "Tab") { e.preventDefault(); finish(true); mmAddChild(); }
+    });
+    input.addEventListener("blur", () => finish(true));
+  }
+  function mmRender() {
+    const host = mmHost();
+    if (!mindmapCanvas) return;
+    if (!host || !host.mindmap) { mindmapCanvas.innerHTML = ""; return; }
+    const root = host.mindmap.root;
+    if (!mmFind(root, mmSelectedId)) mmSelectedId = root.id;
+    const pos = mmLayout(root);
+    let maxX = 0, maxY = 0;
+    pos.forEach((p) => { maxX = Math.max(maxX, p.x + MM_W); maxY = Math.max(maxY, p.y + MM_H); });
+    const W = maxX + MM_PAD * 2, H = maxY + MM_PAD * 2;
+    const NS = "http://www.w3.org/2000/svg";
+    const stage = document.createElement("div");
+    stage.className = "mm-stage";
+    stage.style.width = W + "px";
+    stage.style.height = H + "px";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "mm-lines");
+    svg.setAttribute("width", W);
+    svg.setAttribute("height", H);
+    stage.appendChild(svg);
+    pos.forEach((p) => {
+      const n = p.n;
+      const kids = n.collapsed ? [] : (n.children || []);
+      kids.forEach((k) => {
+        const q = pos.get(k.id);
+        if (!q) return;
+        const x1 = MM_PAD + p.x + MM_W, y1 = MM_PAD + p.y + MM_H / 2;
+        const x2 = MM_PAD + q.x, y2 = MM_PAD + q.y + MM_H / 2;
+        const mx = (x1 + x2) / 2;
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+        path.setAttribute("stroke", MM_COLORS[q.branch % MM_COLORS.length]);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke-width", "2.5");
+        path.setAttribute("stroke-linecap", "round");
+        svg.appendChild(path);
+      });
+    });
+    pos.forEach((p, id) => {
+      const n = p.n;
+      const el = document.createElement("div");
+      el.className = "mm-node" + (p.depth === 0 ? " mm-root" : "") + (id === mmSelectedId ? " selected" : "");
+      el.dataset.id = id;
+      el.style.left = (MM_PAD + p.x) + "px";
+      el.style.top = (MM_PAD + p.y) + "px";
+      el.style.width = MM_W + "px";
+      el.style.height = MM_H + "px";
+      if (p.depth > 0) el.style.setProperty("--mm-color", MM_COLORS[p.branch % MM_COLORS.length]);
+      const label = document.createElement("span");
+      label.className = "mm-label";
+      label.textContent = n.text || "";
+      el.title = n.text || "";
+      el.appendChild(label);
+      if (n.collapsed && (n.children || []).length) {
+        const b = document.createElement("span");
+        b.className = "mm-badge";
+        b.textContent = "+" + (mindmapCountNodes(n) - 1);
+        b.title = "Collapsed — click to expand";
+        b.addEventListener("click", (e) => { e.stopPropagation(); mmSelectedId = id; mmToggleCollapse(); });
+        el.appendChild(b);
+      }
+      el.addEventListener("click", (e) => { e.stopPropagation(); if (mmEditingId) return; mmSelectedId = id; mmRender(); });
+      el.addEventListener("dblclick", (e) => { e.stopPropagation(); mmSelectedId = id; mmRender(); mmStartRename(id); });
+      stage.appendChild(el);
+    });
+    const prevTop = mindmapCanvas.scrollTop, prevLeft = mindmapCanvas.scrollLeft;
+    mindmapCanvas.innerHTML = "";
+    mindmapCanvas.appendChild(stage);
+    mindmapCanvas.scrollTop = prevTop;
+    mindmapCanvas.scrollLeft = prevLeft;
+    const cnt = $("#mindmap-count");
+    if (cnt) cnt.textContent = mindmapCountNodes(root) + (mindmapCountNodes(root) === 1 ? " idea" : " ideas");
+  }
+  function mmMoveSelection(key) {
+    const host = mmHost(); if (!host || !host.mindmap) return;
+    const f = mmFind(host.mindmap.root, mmSelectedId);
+    if (!f) return;
+    if (key === "ArrowLeft" && f.parent) mmSelectedId = f.parent.id;
+    else if (key === "ArrowRight" && !f.n.collapsed && (f.n.children || []).length) mmSelectedId = f.n.children[0].id;
+    else if ((key === "ArrowUp" || key === "ArrowDown") && f.parent) {
+      const sibs = f.parent.children;
+      const i = sibs.findIndex(x => x.id === mmSelectedId);
+      const j = key === "ArrowUp" ? i - 1 : i + 1;
+      if (sibs[j]) mmSelectedId = sibs[j].id;
+    }
+    mmRender();
+  }
+  if (mindmapModal) {
+    $("#mindmap-add-child")?.addEventListener("click", mmAddChild);
+    $("#mindmap-add-sibling")?.addEventListener("click", mmAddSibling);
+    $("#mindmap-rename")?.addEventListener("click", () => mmStartRename(mmSelectedId));
+    $("#mindmap-collapse")?.addEventListener("click", mmToggleCollapse);
+    $("#mindmap-delete")?.addEventListener("click", mmDeleteSelected);
+    $("#mindmap-back")?.addEventListener("click", closeMindmapModal);
+    $("#mindmap-close")?.addEventListener("click", closeMindmapModal);
+    mindmapModal.addEventListener("click", (e) => { if (e.target === mindmapModal) closeMindmapModal(); });
+    document.addEventListener("keydown", (e) => {
+      if (!mmCtx || mindmapModal.classList.contains("hidden") || mmEditingId) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === "Tab") { e.preventDefault(); e.stopImmediatePropagation(); mmAddChild(); }
+      else if (k === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); mmAddSibling(); }
+      else if (k === "F2") { e.preventDefault(); e.stopImmediatePropagation(); mmStartRename(mmSelectedId); }
+      else if (k === "Delete" || k === "Backspace") { e.preventDefault(); e.stopImmediatePropagation(); mmDeleteSelected(); }
+      else if (k === " ") { e.preventDefault(); e.stopImmediatePropagation(); mmToggleCollapse(); }
+      else if (k === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); closeMindmapModal(); }
+      else if (k.startsWith("Arrow")) { e.preventDefault(); e.stopImmediatePropagation(); mmMoveSelection(k); }
+    }, true);
+  }
+  // ===== end v808 mindmap ===================================================
 
   function closeBrainstormModal() {
     const target = brainstormEditingId;

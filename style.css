@@ -12155,3 +12155,37 @@ body.signed-out #mindmap-list{display:none!important}
 .link-nav-btn:hover:not(:disabled){ border-color: var(--accent); color: var(--accent); }
 .link-nav-btn:disabled{ opacity: .35; cursor: default; }
 .link-nav-close{ font-size: 13px; padding: 0; }
+
+
+/* v808: Mindmap inside a node or calendar cell */
+.mindmap-modal-card{
+  width:min(960px, 96vw); height:min(640px, 90vh); display:flex; flex-direction:column; gap:10px;
+  background:#1b1e26; color:#f2f3f7; padding:16px;
+}
+.mindmap-toolbar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.mindmap-count{ margin-left:auto; font-size:12px; opacity:.7; }
+.mindmap-canvas{
+  flex:1; min-height:0; overflow:auto; border-radius:10px;
+  background:#12141a; border:1px solid rgba(255,255,255,.08);
+}
+.mm-stage{ position:relative; }
+.mm-lines{ position:absolute; left:0; top:0; pointer-events:none; }
+.mm-node{
+  position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:6px;
+  padding:0 10px; border-radius:10px; cursor:pointer; user-select:none;
+  background:#232733; color:#f2f3f7; border:2px solid var(--mm-color, #7c9eff);
+  font-size:13px; line-height:1.2;
+}
+.mm-node.mm-root{ background:#3a4a7a; border-color:#7c9eff; font-weight:600; }
+.mm-node.selected{ box-shadow:0 0 0 3px rgba(255,255,255,.55); }
+.mm-label{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mm-badge{
+  flex:none; font-size:11px; padding:1px 6px; border-radius:999px;
+  background:rgba(255,255,255,.18); cursor:pointer;
+}
+.mm-input{
+  width:100%; box-sizing:border-box; border:0; outline:0; background:transparent;
+  color:inherit; font:inherit; padding:0;
+}
+.mindmap-hint{ margin:0; font-size:11px; opacity:.6; }
+.node-table-cell-mindmap, .node-mindmap-marker{ cursor:pointer; }
