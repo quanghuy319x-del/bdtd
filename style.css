@@ -12263,3 +12263,146 @@ body.signed-out #mindmap-list{display:none!important}
 @media (max-width: 640px){
   .mindmap-modal-card{ width: 100vw; height: 96vh; max-height: 96vh; border-radius: 12px; padding: 8px; }
 }
+
+
+/* v815 — PHONE Calendar markers (icons, counters, timer pills, task badge).
+   ROOT CAUSE of the oversized icons on phones: every size in the v810 /
+   v712 / v813 rules is written as  calc(var(--cal-icon-size, 12cqw) * .8)
+   but --cal-icon-size and `container-type: inline-size` were only ever
+   defined inside @media (min-width:641px). On a phone the var was unset, so
+   the 12cqw fallback had no container to measure and resolved against the
+   VIEWPORT instead (≈ 35px icons inside a ≈ 38px-wide date cell), which made
+   icons spill over the date number, the task badge and the neighbouring
+   cells. Here the phone gets its own container + sizes that follow the date
+   cell's real width. Placed last so it wins over the older overrides. */
+@media (max-width:640px){
+  /* 1) px baseline (sized for a ≈ 38px-wide date cell) — used by any browser
+        without container-query units. */
+  #calendar-modal #calendar-grid .calendar-cell{
+    --ph-icon:13px;        /* standard marker */
+    --ph-count:9px;        /* little counter on a marker's corner */
+    --ph-gap:2px;
+    --ph-b1:11px; --ph-b2:11.5px; --ph-b3:12.5px;   /* task badge, by score */
+    --ph-b4:13.5px; --ph-b5:14.5px; --ph-b6:15px;
+  }
+  /* 2) Preferred: follow the date cell's own width, so 320px → 430px wide
+        phones all get proportional markers (2 markers per row). */
+  @supports (width:1cqw){
+    #calendar-modal #calendar-grid .calendar-cell{
+      container-type:inline-size;
+      /* cqw = % of the date cell's content box (≈ 30px in a 38px cell) */
+      --ph-icon:clamp(10px, 42cqw, 18px);
+      --ph-count:clamp(8px, 30cqw, 12px);
+      --ph-gap:clamp(1px, 6cqw, 3px);
+      --ph-b1:clamp(10px, 36cqw, 14px);
+      --ph-b2:clamp(10px, 38.5cqw, 14.5px);
+      --ph-b3:clamp(11px, 41cqw, 15px);
+      --ph-b4:clamp(11px, 43.5cqw, 15.5px);
+      --ph-b5:clamp(12px, 46cqw, 16px);
+      --ph-b6:clamp(12px, 48cqw, 16px);
+    }
+  }
+
+  /* Marker strip: bottom of the date cell, rows grow upward but never past
+     the date-number row (extra rows are clipped, not painted over it). Small
+     top/right padding leaves room for the counter that overhangs a marker. */
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip{
+    left:2px!important; right:2px!important; bottom:2px!important;
+    width:auto!important; max-width:none!important; min-height:0!important;
+    max-height:calc(100% - 22px)!important;
+    margin:0!important;
+    padding:var(--ph-gap) 4px 0 0!important;
+    gap:var(--ph-gap)!important;
+    display:flex!important;
+    flex-wrap:wrap-reverse!important;
+    align-content:flex-start!important;
+    align-items:flex-end!important;
+    justify-content:flex-start!important;
+    overflow:hidden!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Show whole rows only: snap the strip's height to a whole number of marker
+     rows (a half-clipped row looks broken). Older browsers without round()
+     just use the max-height above. */
+  @supports (height:round(down, 10px, 3px)){
+    #calendar-modal #calendar-grid .calendar-summary-icon-strip{
+      max-height:round(down, 100% - 22px, var(--ph-icon) + var(--ph-gap))!important;
+    }
+  }
+
+  /* Every marker type (note, DRC, photo, link, brainstorm, retained, date
+     photo/link) shares one size. */
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon{
+    width:var(--ph-icon)!important;
+    height:var(--ph-icon)!important;
+    min-width:var(--ph-icon)!important;
+    max-width:var(--ph-icon)!important;
+    flex:0 0 var(--ph-icon)!important;
+    padding:0!important;
+    margin:0!important;
+    font-size:calc(var(--ph-icon) * .78)!important;
+    line-height:1!important;
+    border-radius:calc(var(--ph-icon) * .2)!important;
+    box-sizing:border-box!important;
+  }
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon:hover{
+    transform:none!important;
+  }
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-photo{
+    border-width:1px!important;
+  }
+  /* The mind-map glyph has always been drawn smaller than the others. */
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon.node-table-cell-mindmap{
+    width:calc(var(--ph-icon) * .8)!important;
+    height:calc(var(--ph-icon) * .8)!important;
+    min-width:calc(var(--ph-icon) * .8)!important;
+    max-width:calc(var(--ph-icon) * .8)!important;
+    flex:0 0 calc(var(--ph-icon) * .8)!important;
+  }
+  /* Timer: a content-width pill exactly one marker tall. */
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon.node-table-cell-timer{
+    width:max-content!important;
+    min-width:var(--ph-icon)!important;
+    max-width:100%!important;
+    flex:0 1 auto!important;
+    padding:0 2px!important;
+  }
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-timer span{
+    font-size:calc(var(--ph-icon) * .5)!important;
+    letter-spacing:-.04em!important;
+  }
+
+  /* Counter on a marker's top-right corner. */
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+    min-width:var(--ph-count)!important;
+    height:var(--ph-count)!important;
+    line-height:var(--ph-count)!important;
+    font-size:calc(var(--ph-count) * .7)!important;
+    right:calc(var(--ph-count) * -.35)!important;
+    top:calc(var(--ph-gap) * -1)!important;
+    padding:0 1px!important;
+    border-width:1px!important;
+    z-index:20!important;
+  }
+
+  /* Task score badge: top-right, sized so it never reaches the date number.
+     Size/Both modes keep the six score bands; Color-only keeps the middle. */
+  #calendar-modal #calendar-grid .calendar-summary-score-badge{
+    --task-badge-size:var(--ph-b3)!important;
+    --task-badge-pad:calc(var(--task-badge-size) * .08)!important;
+    --task-badge-font:calc(var(--task-badge-size) * .46)!important;
+    top:2px!important; right:2px!important;
+    transform:none!important;
+  }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-very-low{ --task-badge-size:var(--ph-b1)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-low{ --task-badge-size:var(--ph-b2)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-medium{ --task-badge-size:var(--ph-b3)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-strong{ --task-badge-size:var(--ph-b4)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-high{ --task-badge-size:var(--ph-b5)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:not(.task-badge-color).score-very-high{ --task-badge-size:var(--ph-b6)!important; }
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:hover,
+  #calendar-modal #calendar-grid .calendar-summary-score-badge:focus-visible{
+    transform:none!important;
+  }
+}
