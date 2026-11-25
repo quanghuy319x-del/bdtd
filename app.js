@@ -32619,7 +32619,8 @@ function closeSubtaskFocusMode() {
           const p = nodeTaskProgress(getCellAttach(ref.node, ref.r, ref.c));
           return sum + Math.max(0, Number(p && p.done) || 0);
         }, 0);
-        if (liveTaskRefs.length) {
+        // Only show the badge once the day has a score of at least 1 (no "0" badge).
+        if (liveTaskRefs.length && Math.round(combinedPoints) >= 1) {
           const badge = document.createElement("span");
           badge.className = taskBadgeClass(combinedPoints, "node-table-cell-score-badge calendar-summary-score-badge");
           badge.textContent = taskCountDisplay(combinedPoints);
